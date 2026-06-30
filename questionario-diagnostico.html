@@ -1,0 +1,1997 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diagnóstico de Tráfego Pago</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root {
+    --primary: #1a1a2e;
+    --accent: #e94560;
+    --light: #f8f9fa;
+    --gray: #6c757d;
+    --border: #e2e8f0;
+    --success: #10b981;
+    --shadow: 0 4px 24px rgba(0,0,0,0.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    min-height: 100vh;
+    padding: 24px 16px;
+    color: #1a1a2e;
+  }
+  .container { max-width: 760px; margin: 0 auto; }
+
+  /* Header */
+  .header { text-align: center; margin-bottom: 32px; color: white; }
+  .header .badge {
+    display: inline-block;
+    background: rgba(233,69,96,0.2);
+    border: 1px solid rgba(233,69,96,0.4);
+    color: #e94560;
+    padding: 4px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 600;
+    letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;
+  }
+  .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  .header p { font-size: 15px; opacity: 0.7; }
+
+  /* Progress */
+  .progress-wrapper {
+    background: rgba(255,255,255,0.08);
+    border-radius: 16px; padding: 20px 24px; margin-bottom: 24px; color: white;
+  }
+  .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .progress-label { font-size: 13px; opacity: 0.8; }
+  .progress-count { font-size: 13px; font-weight: 700; color: #e94560; }
+  .progress-bar-bg { background: rgba(255,255,255,0.1); border-radius: 8px; height: 6px; overflow: hidden; }
+  .progress-bar { background: linear-gradient(90deg, #e94560, #f59e0b); height: 100%; border-radius: 8px; transition: width 0.4s ease; width: 0%; }
+  .steps-nav { display: flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
+  .step-dot { flex: 1; min-width: 20px; height: 4px; border-radius: 4px; background: rgba(255,255,255,0.15); transition: background 0.3s; }
+  .step-dot.active { background: #e94560; }
+  .step-dot.completed { background: #10b981; }
+
+  /* Cards */
+  .card { background: white; border-radius: 20px; padding: 36px; box-shadow: var(--shadow); margin-bottom: 16px; display: none; animation: fadeIn 0.3s ease; }
+  .card.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  .section-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #fef3f2; color: #e94560; border: 1px solid #fecaca;
+    padding: 4px 12px; border-radius: 20px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 20px; font-weight: 700; color: #1a1a2e; margin-bottom: 6px; line-height: 1.3; }
+  .card .subtitle { font-size: 14px; color: #6c757d; margin-bottom: 28px; line-height: 1.5; }
+
+  /* Fields */
+  .field-group { margin-bottom: 22px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; }
+  label .required { color: #e94560; margin-left: 2px; }
+
+  input[type="text"], input[type="number"], textarea, select {
+    width: 100%; padding: 12px 16px;
+    border: 1.5px solid #e2e8f0; border-radius: 12px;
+    font-size: 14px; color: #1a1a2e; background: #f8fafc;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    outline: none; font-family: inherit;
+  }
+  input:focus, textarea:focus, select:focus {
+    border-color: #e94560; background: white; box-shadow: 0 0 0 3px rgba(233,69,96,0.08);
+  }
+  input.error, textarea.error, select.error { border-color: #e94560 !important; background: #fff5f5 !important; }
+  textarea { resize: vertical; min-height: 90px; }
+
+  .input-prefix-wrapper {
+    display: flex; align-items: center;
+    border: 1.5px solid #e2e8f0; border-radius: 12px;
+    background: #f8fafc; overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .input-prefix-wrapper:focus-within { border-color: #e94560; background: white; box-shadow: 0 0 0 3px rgba(233,69,96,0.08); }
+  .input-prefix-wrapper.error { border-color: #e94560 !important; background: #fff5f5 !important; }
+  .input-prefix { padding: 12px 14px; color: #6c757d; font-size: 14px; font-weight: 600; background: #f1f5f9; border-right: 1.5px solid #e2e8f0; white-space: nowrap; }
+  .input-prefix-wrapper input { border: none; border-radius: 0; background: transparent; box-shadow: none; }
+  .input-prefix-wrapper input:focus { border: none; box-shadow: none; }
+
+  /* Tooltip/Explicação */
+  .field-tip {
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: #075985;
+    margin-top: 8px;
+    line-height: 1.6;
+  }
+  .field-tip strong { color: #0c4a6e; }
+
+  /* Error message */
+  .error-msg { color: #e94560; font-size: 12px; margin-top: 5px; display: none; }
+  .error-msg.visible { display: block; }
+
+  /* Radio / Checkbox cards */
+  .options-grid { display: grid; gap: 10px; }
+  .options-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .options-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .option-card { position: relative; cursor: pointer; }
+  .option-card input[type="radio"], .option-card input[type="checkbox"] { position: absolute; opacity: 0; width: 0; height: 0; }
+  .option-label {
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px 16px; border: 1.5px solid #e2e8f0;
+    border-radius: 12px; background: #f8fafc;
+    font-size: 14px; color: #374151; transition: all 0.2s; cursor: pointer;
+  }
+  .option-card input[type="radio"]:checked + .option-label,
+  .option-card input[type="checkbox"]:checked + .option-label {
+    border-color: #e94560; background: #fef3f2; color: #1a1a2e; font-weight: 600;
+  }
+  .option-icon { font-size: 18px; width: 28px; text-align: center; flex-shrink: 0; }
+  .check-indicator {
+    margin-left: auto; width: 18px; height: 18px;
+    border: 2px solid #d1d5db; border-radius: 50%; transition: all 0.2s; flex-shrink: 0;
+  }
+  .check-indicator.square { border-radius: 4px; }
+  .option-card input:checked + .option-label .check-indicator {
+    background: #e94560; border-color: #e94560; box-shadow: inset 0 0 0 3px white;
+  }
+  .options-error { border: 1.5px solid #e94560; border-radius: 12px; padding: 8px; background: #fff5f5; }
+
+  /* Range */
+  .range-wrapper { padding: 4px 0; }
+  input[type="range"] { -webkit-appearance: none; width: 100%; height: 6px; border-radius: 6px; background: #e2e8f0; outline: none; padding: 0; border: none; box-shadow: none; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #e94560; cursor: pointer; box-shadow: 0 2px 8px rgba(233,69,96,0.4); }
+  .range-labels { display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af; margin-top: 6px; }
+  .range-value { text-align: center; font-size: 22px; font-weight: 700; color: #e94560; margin-top: 8px; }
+
+  /* Divider */
+  .divider { border: none; border-top: 1px solid #f1f5f9; margin: 24px 0; }
+
+  /* Conditional block */
+  .conditional-block { display: none; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; margin-top: 12px; }
+  .conditional-block.visible { display: block; }
+
+  /* Navigation */
+  .nav-buttons { display: flex; gap: 12px; margin-top: 32px; }
+  .btn { flex: 1; padding: 14px 24px; border-radius: 14px; font-size: 15px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; font-family: inherit; }
+  .btn-back { background: #f1f5f9; color: #374151; flex: 0.4; }
+  .btn-back:hover { background: #e2e8f0; }
+  .btn-next { background: linear-gradient(135deg, #e94560, #c73652); color: white; box-shadow: 0 4px 14px rgba(233,69,96,0.35); }
+  .btn-next:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(233,69,96,0.45); }
+  .btn-finish { background: linear-gradient(135deg, #10b981, #059669); color: white; box-shadow: 0 4px 14px rgba(16,185,129,0.35); }
+  .btn-finish:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(16,185,129,0.45); }
+
+  /* Infra */
+  .infra-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .infra-item { position: relative; cursor: pointer; }
+  .infra-item input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .infra-box { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 16px; border: 1.5px solid #e2e8f0; border-radius: 12px; background: #f8fafc; font-size: 13px; color: #374151; text-align: center; transition: all 0.2s; cursor: pointer; }
+  .infra-box .icon { font-size: 22px; }
+  .infra-item input:checked + .infra-box { border-color: #10b981; background: #f0fdf4; color: #065f46; font-weight: 600; }
+
+  /* Briefing Screen */
+  .briefing-screen { display: none; animation: fadeIn 0.4s ease; }
+  .briefing-screen.active { display: block; }
+  .briefing-header { text-align: center; padding: 40px 36px 24px; background: white; border-radius: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+  .briefing-header .success-icon { width: 64px; height: 64px; background: linear-gradient(135deg, #10b981, #059669); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 28px; }
+  .briefing-header h2 { font-size: 24px; font-weight: 700; color: #1a1a2e; margin-bottom: 8px; }
+  .briefing-header p { color: #6c757d; font-size: 15px; }
+  .briefing-card { background: white; border-radius: 20px; padding: 28px; margin-bottom: 16px; box-shadow: var(--shadow); }
+  .briefing-section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #e94560; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid #fef3f2; }
+  .briefing-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #f8fafc; gap: 12px; }
+  .briefing-row:last-child { border-bottom: none; }
+  .briefing-key { font-size: 13px; color: #6c757d; min-width: 140px; flex-shrink: 0; }
+  .briefing-val { font-size: 14px; font-weight: 600; color: #1a1a2e; text-align: right; }
+  .alert-box { background: #fffbeb; border: 1px solid #fcd34d; border-radius: 12px; padding: 14px 16px; font-size: 13px; color: #78350f; margin-bottom: 16px; display: flex; align-items: flex-start; gap: 10px; }
+  .btn-group-final { display: flex; gap: 12px; margin-top: 8px; }
+  .btn-pdf { flex: 1; padding: 16px; background: linear-gradient(135deg, #e94560, #c73652); color: white; border: none; border-radius: 14px; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s; font-family: inherit; box-shadow: 0 4px 14px rgba(233,69,96,0.35); }
+  .btn-pdf:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(233,69,96,0.45); }
+  .btn-restart { padding: 16px 24px; background: #f1f5f9; color: #374151; border: none; border-radius: 14px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: inherit; }
+  .btn-restart:hover { background: #e2e8f0; }
+  .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .tag { background: #f1f5f9; border: 1px solid #e2e8f0; color: #374151; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .tag.green { background: #f0fdf4; border-color: #bbf7d0; color: #065f46; }
+  .tag.red { background: #fef3f2; border-color: #fecaca; color: #991b1b; }
+
+  /* ===== STRATEGY SCREEN ===== */
+  .strategy-screen { display: none; animation: fadeIn 0.4s ease; }
+  .strategy-screen.active { display: block; }
+
+  .strategy-header {
+    text-align: center; padding: 36px 36px 24px;
+    background: linear-gradient(135deg, #1a1a2e, #0f3460);
+    border-radius: 20px; margin-bottom: 16px; box-shadow: var(--shadow);
+    color: white;
+  }
+  .strategy-header .s-icon {
+    width: 64px; height: 64px;
+    background: linear-gradient(135deg, #e94560, #c73652);
+    border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; margin: 0 auto 16px; font-size: 28px;
+  }
+  .strategy-header h2 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .strategy-header p { opacity: 0.7; font-size: 14px; }
+
+  .score-bar-wrapper {
+    background: rgba(255,255,255,0.1); border-radius: 14px;
+    padding: 16px 20px; margin-top: 20px; text-align: left;
+  }
+  .score-label { font-size: 12px; opacity: 0.7; margin-bottom: 8px; }
+  .score-track { background: rgba(255,255,255,0.15); border-radius: 20px; height: 8px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 20px; transition: width 1s ease; }
+  .score-fill.low { background: linear-gradient(90deg,#e94560,#f59e0b); }
+  .score-fill.mid { background: linear-gradient(90deg,#f59e0b,#10b981); }
+  .score-fill.high { background: linear-gradient(90deg,#10b981,#06d6a0); }
+  .score-number { font-size: 28px; font-weight: 800; margin-top: 8px; }
+
+  .s-card {
+    background: white; border-radius: 20px; padding: 28px;
+    margin-bottom: 16px; box-shadow: var(--shadow);
+  }
+  .s-card-title {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 15px; font-weight: 700; color: #1a1a2e; margin-bottom: 20px;
+    padding-bottom: 12px; border-bottom: 2px solid #f1f5f9;
+  }
+  .s-card-title .s-icon-sm {
+    width: 34px; height: 34px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .icon-red { background: #fef3f2; }
+  .icon-blue { background: #eff6ff; }
+  .icon-green { background: #f0fdf4; }
+  .icon-yellow { background: #fffbeb; }
+  .icon-purple { background: #faf5ff; }
+  .icon-gray { background: #f8fafc; }
+
+  .s-grid { display: grid; gap: 12px; }
+  .s-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .s-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  .s-item {
+    background: #f8fafc; border-radius: 12px;
+    padding: 14px 16px; border-left: 3px solid transparent;
+  }
+  .s-item.red { border-left-color: #e94560; }
+  .s-item.green { border-left-color: #10b981; }
+  .s-item.blue { border-left-color: #3b82f6; }
+  .s-item.yellow { border-left-color: #f59e0b; }
+  .s-item.purple { border-left-color: #8b5cf6; }
+  .s-item-label { font-size: 11px; color: #9ca3af; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .s-item-value { font-size: 14px; font-weight: 700; color: #1a1a2e; line-height: 1.4; }
+  .s-item-sub { font-size: 12px; color: #6c757d; margin-top: 3px; line-height: 1.4; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .kpi-box {
+    background: #f8fafc; border-radius: 14px; padding: 16px;
+    text-align: center; border: 1.5px solid #e2e8f0;
+  }
+  .kpi-box .kpi-val { font-size: 22px; font-weight: 800; color: #e94560; }
+  .kpi-box .kpi-label { font-size: 11px; color: #6c757d; margin-top: 4px; font-weight: 500; }
+  .kpi-box .kpi-ref { font-size: 10px; color: #9ca3af; margin-top: 2px; }
+
+  .funnel-steps { display: flex; flex-direction: column; gap: 2px; }
+  .funnel-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; border-radius: 10px; cursor: default;
+  }
+  .funnel-row.tofu { background: #fef3f2; }
+  .funnel-row.mofu { background: #fffbeb; }
+  .funnel-row.bofu { background: #f0fdf4; }
+  .funnel-badge {
+    font-size: 10px; font-weight: 700; padding: 3px 8px;
+    border-radius: 20px; flex-shrink: 0; letter-spacing: 0.5px;
+  }
+  .funnel-row.tofu .funnel-badge { background: #e94560; color: white; }
+  .funnel-row.mofu .funnel-badge { background: #f59e0b; color: white; }
+  .funnel-row.bofu .funnel-badge { background: #10b981; color: white; }
+  .funnel-text { flex: 1; }
+  .funnel-title { font-size: 13px; font-weight: 700; color: #1a1a2e; }
+  .funnel-desc { font-size: 12px; color: #6c757d; margin-top: 2px; }
+  .funnel-pct { font-size: 16px; font-weight: 800; color: #374151; }
+
+  .budget-bar-row { margin-bottom: 14px; }
+  .budget-bar-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+  .budget-bar-label span:first-child { font-weight: 600; color: #374151; }
+  .budget-bar-label span:last-child { font-weight: 700; color: #e94560; }
+  .budget-bar-bg { background: #f1f5f9; border-radius: 8px; height: 10px; overflow: hidden; }
+  .budget-bar-fill { height: 100%; border-radius: 8px; }
+
+  .action-list { list-style: none; }
+  .action-item {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 12px 0; border-bottom: 1px solid #f1f5f9;
+  }
+  .action-item:last-child { border-bottom: none; }
+  .action-num {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #e94560; color: white; font-size: 12px;
+    font-weight: 700; display: flex; align-items: center;
+    justify-content: center; flex-shrink: 0; margin-top: 1px;
+  }
+  .action-num.green { background: #10b981; }
+  .action-num.yellow { background: #f59e0b; }
+  .action-title { font-size: 14px; font-weight: 700; color: #1a1a2e; }
+  .action-desc { font-size: 12px; color: #6c757d; margin-top: 3px; line-height: 1.5; }
+  .action-priority {
+    margin-left: auto; font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 20px; white-space: nowrap; flex-shrink: 0;
+  }
+  .p-alta { background: #fef3f2; color: #e94560; }
+  .p-media { background: #fffbeb; color: #d97706; }
+  .p-baixa { background: #f0fdf4; color: #059669; }
+
+  .risk-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 12px 14px; border-radius: 10px; margin-bottom: 8px;
+  }
+  .risk-item.high { background: #fef3f2; border-left: 3px solid #e94560; }
+  .risk-item.med { background: #fffbeb; border-left: 3px solid #f59e0b; }
+  .risk-item.low { background: #f0fdf4; border-left: 3px solid #10b981; }
+  .risk-icon { font-size: 16px; flex-shrink: 0; }
+  .risk-title { font-size: 13px; font-weight: 700; color: #1a1a2e; }
+  .risk-desc { font-size: 12px; color: #6c757d; margin-top: 2px; line-height: 1.5; }
+
+  .criativo-card {
+    background: #f8fafc; border-radius: 14px; padding: 16px;
+    border: 1.5px solid #e2e8f0; margin-bottom: 10px;
+  }
+  .criativo-type { font-size: 11px; font-weight: 700; color: #e94560; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .criativo-title { font-size: 14px; font-weight: 700; color: #1a1a2e; margin-bottom: 4px; }
+  .criativo-desc { font-size: 13px; color: #6c757d; line-height: 1.5; }
+
+  .btn-strategy {
+    flex: 1; padding: 16px;
+    background: linear-gradient(135deg, #1a1a2e, #0f3460);
+    color: white; border: none; border-radius: 14px;
+    font-size: 15px; font-weight: 700; cursor: pointer;
+    transition: all 0.2s; font-family: inherit;
+    box-shadow: 0 4px 14px rgba(26,26,46,0.35);
+  }
+  .btn-strategy:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(26,26,46,0.45); }
+  .btn-pdf-strategy {
+    flex: 1; padding: 16px;
+    background: linear-gradient(135deg, #e94560, #c73652);
+    color: white; border: none; border-radius: 14px;
+    font-size: 15px; font-weight: 700; cursor: pointer;
+    transition: all 0.2s; font-family: inherit;
+    box-shadow: 0 4px 14px rgba(233,69,96,0.35);
+  }
+  .btn-pdf-strategy:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(233,69,96,0.45); }
+
+  @media (max-width: 600px) {
+    .card { padding: 24px 20px; }
+    .options-grid.cols-2, .options-grid.cols-3 { grid-template-columns: 1fr; }
+    .infra-grid { grid-template-columns: 1fr 1fr; }
+    .briefing-row { flex-direction: column; }
+    .briefing-val { text-align: left; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Botão Demo flutuante -->
+  <div style="text-align:center;margin-bottom:12px;">
+    <button onclick="ativarDemo()" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);color:white;padding:8px 20px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;letter-spacing:0.5px;font-family:inherit;transition:all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.12)'">
+      🎯 Modo Demo — Ver resultado com dados de teste
+    </button>
+  </div>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="badge">⚡ Agente de Tráfego Pago</div>
+    <h1>Diagnóstico Estratégico</h1>
+    <p>Responda com precisão — cada detalhe impacta a estratégia final</p>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-wrapper">
+    <div class="progress-header">
+      <span class="progress-label" id="progressLabel">Seção 1 de 8 — Sobre o Negócio</span>
+      <span class="progress-count" id="progressCount">0%</span>
+    </div>
+    <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="steps-nav" id="stepsNav"></div>
+  </div>
+
+  <!-- ====== STEP 1: Sobre o Negócio ====== -->
+  <div class="card active" id="step-1">
+    <div class="section-tag">🏢 Seção 1</div>
+    <h2>Sobre o Negócio</h2>
+    <p class="subtitle">Vamos entender quem você é antes de montar qualquer estratégia.</p>
+
+    <div class="field-group">
+      <label>Nome do negócio / empresa <span class="required">*</span></label>
+      <input type="text" id="nomeNegocio" placeholder="Ex: Loja da Maria, Clínica Dra. Ana..." />
+      <div class="error-msg" id="err-nomeNegocio">Este campo é obrigatório.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Segmento <span class="required">*</span></label>
+      <select id="segmento">
+        <option value="">Selecione o segmento</option>
+        <option>E-commerce / Loja Virtual</option>
+        <option>Infoproduto / Curso Online</option>
+        <option>Negócio Local / Físico</option>
+        <option>Prestação de Serviços B2C</option>
+        <option>Prestação de Serviços B2B</option>
+        <option>SaaS / Software</option>
+        <option>Saúde e Bem-estar</option>
+        <option>Educação</option>
+        <option>Beleza e Estética</option>
+        <option>Imobiliário</option>
+        <option>Alimentação / Restaurante</option>
+        <option>Outro</option>
+      </select>
+      <div class="error-msg" id="err-segmento">Selecione um segmento.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Descreva o produto ou serviço principal <span class="required">*</span></label>
+      <textarea id="descricaoProduto" placeholder="O que você vende? Como funciona? Qual problema resolve?"></textarea>
+      <div class="error-msg" id="err-descricaoProduto">Este campo é obrigatório.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Há quanto tempo o negócio está ativo? <span class="required">*</span></label>
+      <div class="options-grid cols-2" id="opt-tempoNegocio">
+        <label class="option-card"><input type="radio" name="tempoNegocio" value="Menos de 6 meses" /><div class="option-label"><span class="option-icon">🌱</span> Menos de 6 meses <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="tempoNegocio" value="6 meses a 1 ano" /><div class="option-label"><span class="option-icon">📅</span> 6 meses a 1 ano <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="tempoNegocio" value="1 a 3 anos" /><div class="option-label"><span class="option-icon">📈</span> 1 a 3 anos <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="tempoNegocio" value="Mais de 3 anos" /><div class="option-label"><span class="option-icon">🏆</span> Mais de 3 anos <div class="check-indicator"></div></div></label>
+      </div>
+      <div class="error-msg" id="err-tempoNegocio">Selecione uma opção.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Abrangência geográfica <span class="required">*</span></label>
+      <div class="options-grid cols-2" id="opt-abrangencia">
+        <label class="option-card"><input type="radio" name="abrangencia" value="Local (cidade/bairro)" /><div class="option-label"><span class="option-icon">📍</span> Local (cidade/bairro) <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="abrangencia" value="Regional (estado)" /><div class="option-label"><span class="option-icon">🗺️</span> Regional (estado) <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="abrangencia" value="Nacional" /><div class="option-label"><span class="option-icon">🇧🇷</span> Nacional <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="abrangencia" value="Internacional" /><div class="option-label"><span class="option-icon">🌍</span> Internacional <div class="check-indicator"></div></div></label>
+      </div>
+      <div class="error-msg" id="err-abrangencia">Selecione uma opção.</div>
+    </div>
+
+    <div class="nav-buttons">
+      <button class="btn btn-next" onclick="nextStep(1)">Continuar →</button>
+    </div>
+  </div>
+
+  <!-- ====== STEP 2: Oferta e Financeiro ====== -->
+  <div class="card" id="step-2">
+    <div class="section-tag">💰 Seção 2</div>
+    <h2>Oferta e Números</h2>
+    <p class="subtitle">Sem números reais, qualquer estratégia é um chute. Seja preciso.</p>
+
+    <div class="field-group">
+      <label>Ticket médio do produto/serviço <span class="required">*</span></label>
+      <div class="input-prefix-wrapper" id="wrap-ticketMedio">
+        <span class="input-prefix">R$</span>
+        <input type="number" id="ticketMedio" placeholder="Ex: 297" min="0" />
+      </div>
+      <div class="error-msg" id="err-ticketMedio">Informe o ticket médio.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Margem de lucro aproximada <span class="required">*</span></label>
+      <div class="range-wrapper">
+        <input type="range" id="margem" min="5" max="95" step="5" value="40" oninput="updateRange('margem', '%', 'margemVal')" />
+        <div class="range-labels"><span>5%</span><span>50%</span><span>95%</span></div>
+        <div class="range-value" id="margemVal">40%</div>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label>Principais diferenciais competitivos <span class="required">*</span></label>
+      <textarea id="diferenciais" placeholder="Por que um cliente escolheria você e não o concorrente? Preço, entrega, qualidade, exclusividade..."></textarea>
+      <div class="error-msg" id="err-diferenciais">Este campo é obrigatório.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Principais concorrentes <span class="required">*</span></label>
+      <input type="text" id="concorrentes" placeholder="Ex: Marca A, Marca B, Loja X..." />
+      <div class="error-msg" id="err-concorrentes">Cite ao menos um concorrente.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Você possui alguma oferta especial / irresistível ativa? <span class="required">*</span></label>
+      <div class="options-grid cols-2" id="opt-ofertaEspecial">
+        <label class="option-card"><input type="radio" name="ofertaEspecial" value="Sim" onchange="toggleConditional('ofertaBlock', true)" /><div class="option-label"><span class="option-icon">🔥</span> Sim <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="ofertaEspecial" value="Não" onchange="toggleConditional('ofertaBlock', false)" /><div class="option-label"><span class="option-icon">❌</span> Não <div class="check-indicator"></div></div></label>
+      </div>
+      <div class="error-msg" id="err-ofertaEspecial">Selecione uma opção.</div>
+      <div class="conditional-block" id="ofertaBlock">
+        <label>Descreva a oferta <span class="required">*</span></label>
+        <textarea id="descOferta" placeholder="Ex: Leve 2 pague 1, frete grátis acima de R$150, bônus exclusivo..." style="margin-top: 8px;"></textarea>
+      </div>
+    </div>
+
+    <div class="nav-buttons">
+      <button class="btn btn-back" onclick="prevStep(2)">← Voltar</button>
+      <button class="btn btn-next" onclick="nextStep(2)">Continuar →</button>
+    </div>
+  </div>
+
+  <!-- ====== STEP 3: Público-Alvo ====== -->
+  <div class="card" id="step-3">
+    <div class="section-tag">🎯 Seção 3</div>
+    <h2>Público-Alvo</h2>
+    <p class="subtitle">Definir o avatar certo é o que separa campanhas que gastam das que vendem.</p>
+
+    <div class="field-group">
+      <label>Descreva o cliente ideal <span class="required">*</span></label>
+      <textarea id="clienteIdeal" placeholder="Quem é essa pessoa? O que ela faz, onde mora, o que consome, quais são seus problemas e desejos?"></textarea>
+      <div class="error-msg" id="err-clienteIdeal">Este campo é obrigatório.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Faixa etária principal <span class="required">*</span></label>
+      <div class="options-grid cols-3" id="opt-idadePublico">
+        <label class="option-card"><input type="radio" name="idadePublico" value="18-24" /><div class="option-label" style="justify-content: center;">18–24</div></label>
+        <label class="option-card"><input type="radio" name="idadePublico" value="25-34" /><div class="option-label" style="justify-content: center;">25–34</div></label>
+        <label class="option-card"><input type="radio" name="idadePublico" value="35-44" /><div class="option-label" style="justify-content: center;">35–44</div></label>
+        <label class="option-card"><input type="radio" name="idadePublico" value="45-54" /><div class="option-label" style="justify-content: center;">45–54</div></label>
+        <label class="option-card"><input type="radio" name="idadePublico" value="55+" /><div class="option-label" style="justify-content: center;">55+</div></label>
+        <label class="option-card"><input type="radio" name="idadePublico" value="Amplo (18-55+)" /><div class="option-label" style="justify-content: center;">Amplo</div></label>
+      </div>
+      <div class="error-msg" id="err-idadePublico">Selecione uma opção.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Gênero predominante <span class="required">*</span></label>
+      <div class="options-grid cols-3" id="opt-genero">
+        <label class="option-card"><input type="radio" name="genero" value="Feminino" /><div class="option-label" style="justify-content: center;">♀ Feminino</div></label>
+        <label class="option-card"><input type="radio" name="genero" value="Masculino" /><div class="option-label" style="justify-content: center;">♂ Masculino</div></label>
+        <label class="option-card"><input type="radio" name="genero" value="Ambos" /><div class="option-label" style="justify-content: center;">⚤ Ambos</div></label>
+      </div>
+      <div class="error-msg" id="err-genero">Selecione uma opção.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Principais dores e objeções do cliente <span class="required">*</span></label>
+      <textarea id="doresCliente" placeholder="O que impede seu cliente de comprar? O que ele sente antes de chegar em você?"></textarea>
+      <div class="error-msg" id="err-doresCliente">Este campo é obrigatório.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Interesses e comportamentos relevantes <span class="required">*</span></label>
+      <input type="text" id="interesses" placeholder="Ex: fitness, empreendedorismo, maternidade, finanças pessoais..." />
+      <div class="error-msg" id="err-interesses">Este campo é obrigatório.</div>
+    </div>
+
+    <div class="nav-buttons">
+      <button class="btn btn-back" onclick="prevStep(3)">← Voltar</button>
+      <button class="btn btn-next" onclick="nextStep(3)">Continuar →</button>
+    </div>
+  </div>
+
+  <!-- ====== STEP 4: Objetivos ====== -->
+  <div class="card" id="step-4">
+    <div class="section-tag">🚀 Seção 4</div>
+    <h2>Objetivos e Metas</h2>
+    <p class="subtitle">Selecione <strong>todos</strong> os objetivos do cliente — um bom funil ataca mais de uma frente.</p>
+
+    <div class="field-group">
+      <label>Objetivos da campanha <span class="required">*</span> <span style="font-weight:400;color:#6c757d;font-size:12px;">— pode marcar mais de um</span></label>
+      <div class="options-grid" id="opt-objetivo">
+        <label class="option-card"><input type="checkbox" name="objetivo" value="Vendas diretas (e-commerce / checkout)" /><div class="option-label"><span class="option-icon">🛒</span> Vendas diretas (e-commerce / checkout) <div class="check-indicator square"></div></div></label>
+        <label class="option-card"><input type="checkbox" name="objetivo" value="Geração de Leads (captura de contatos)" /><div class="option-label"><span class="option-icon">📋</span> Geração de Leads (captura de contatos) <div class="check-indicator square"></div></div></label>
+        <label class="option-card"><input type="checkbox" name="objetivo" value="Mensagens / WhatsApp" /><div class="option-label"><span class="option-icon">💬</span> Mensagens / WhatsApp <div class="check-indicator square"></div></div></label>
+        <label class="option-card"><input type="checkbox" name="objetivo" value="Lançamento de produto / evento" /><div class="option-label"><span class="option-icon">🚀</span> Lançamento de produto / evento <div class="check-indicator square"></div></div></label>
+        <label class="option-card"><input type="checkbox" name="objetivo" value="Branding / Reconhecimento de marca" /><div class="option-label"><span class="option-icon">📣</span> Branding / Reconhecimento de marca <div class="check-indicator square"></div></div></label>
+        <label class="option-card"><input type="checkbox" name="objetivo" value="Tráfego para site / conteúdo" /><div class="option-label"><span class="option-icon">🌐</span> Tráfego para site / conteúdo <div class="check-indicator square"></div></div></label>
+      </div>
+      <div class="error-msg" id="err-objetivo">Selecione ao menos um objetivo.</div>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="field-group">
+      <label>Meta mensal de resultado <span class="required">*</span></label>
+      <input type="text" id="metaMensal" placeholder="Ex: 50 vendas/mês, 200 leads/mês, 500 mensagens no WhatsApp..." />
+      <div class="error-msg" id="err-metaMensal">Defina uma meta mensurável.</div>
+    </div>
+
+    <div class="field-group">
+      <label>CAC máximo aceitável (Custo por Aquisição) <span class="required">*</span></label>
+      <div class="input-prefix-wrapper" id="wrap-cacMaximo">
+        <span class="input-prefix">R$</span>
+        <input type="number" id="cacMaximo" placeholder="Ex: 50" min="0" />
+      </div>
+      <div class="field-tip">
+        <strong>O que é CAC?</strong> É quanto você aceita gastar para conquistar um cliente ou lead.<br>
+        <strong>Exemplo simples:</strong> Se você vende um produto por R$200 e tem 40% de margem, você lucra R$80 por venda. Se o CAC for R$30, você ainda tem R$50 de lucro. Se o CAC for R$90, você está no prejuízo.<br>
+        👉 Regra prática: o CAC deve ser menor que a margem de lucro por venda.
+      </div>
+      <div class="error-msg" id="err-cacMaximo">Informe o CAC máximo aceitável.</div>
+    </div>
+
+    <div class="field-group">
+      <label>ROAS mínimo esperado <span class="required">*</span> <span style="font-weight:400;color:#6c757d;font-size:12px;">(principalmente e-commerce)</span></label>
+      <div class="input-prefix-wrapper" id="wrap-roasMinimo">
+        <span class="input-prefix">×</span>
+        <input type="number" id="roasMinimo" placeholder="Ex: 3" step="0.1" min="0" />
+      </div>
+      <div class="field-tip">
+        <strong>O que é ROAS?</strong> É o retorno sobre o valor investido em anúncios.<br>
+        <strong>Exemplo simples:</strong> Se você investiu R$1.000 em anúncios e gerou R$4.000 em vendas, seu ROAS foi 4× (ou 400%).<br>
+        👉 Se sua margem é 30%, você precisa de ROAS mínimo de 3,3× para não ter prejuízo. Se não souber ao certo, coloque 3 como ponto de partida.
+      </div>
+      <div class="error-msg" id="err-roasMinimo">Informe o ROAS mínimo esperado.</div>
+    </div>
+
+    <div class="nav-buttons">
+      <button class="btn btn-back" onclick="prevStep(4)">← Voltar</button>
+      <button class="btn btn-next" onclick="nextStep(4)">Continuar →</button>
+    </div>
+  </div>
+
+  <!-- ====== STEP 5: Orçamento ====== -->
+  <div class="card" id="step-5">
+    <div class="section-tag">💳 Seção 5</div>
+    <h2>Orçamento para Anúncios</h2>
+    <p class="subtitle">O orçamento define o que é possível. Seja realista — não o que você gostaria, mas o que você pode de fato investir agora.</p>
+
+    <div class="field-group">
+      <label>Investimento mensal disponível para tráfego pago <span class="required">*</span></label>
+      <div class="options-grid cols-2" id="opt-orcamento">
+        <label class="option-card"><input type="radio" name="orcamento" value="Até R$ 500/mês" /><div class="option-label"><span class="option-icon">🌱</span> Até R$ 500/mês <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="orcamento" value="R$ 500 a R$ 1.500/mês" /><div class="option-label"><span class="option-icon">📊</span> R$ 500 a R$ 1.500/mês <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="orcamento" value="R$ 1.500 a R$ 5.000/mês" /><div class="option-label"><span class="option-icon">🚀</span> R$ 1.500 a R$ 5.000/mês <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="orcamento" value="R$ 5.000 a R$ 15.000/mês" /><div class="option-label"><span class="option-icon">💎</span> R$ 5.000 a R$ 15.000/mês <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="orcamento" value="Acima de R$ 15.000/mês" /><div class="option-label"><span class="option-icon">🏆</span> Acima de R$ 15.000/mês <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="orcamento" value="Ainda não definido" /><div class="option-label"><span class="option-icon">❓</span> Ainda não definido <div class="check-indicator"></div></div></label>
+      </div>
+      <div class="error-msg" id="err-orcamento">Selecione uma opção.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Você já investiu em tráfego pago antes? <span class="required">*</span></label>
+      <div class="options-grid cols-2" id="opt-experienciaTrafego">
+        <label class="option-card"><input type="radio" name="experienciaTrafego" value="Nunca anunciei" onchange="toggleConditional('historicoBlock', false)" /><div class="option-label"><span class="option-icon">🆕</span> Nunca anunciei <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="experienciaTrafego" value="Já anunciei antes" onchange="toggleConditional('historicoBlock', true)" /><div class="option-label"><span class="option-icon">📱</span> Já anunciei antes <div class="check-indicator"></div></div></label>
+      </div>
+      <div class="error-msg" id="err-experienciaTrafego">Selecione uma opção.</div>
+
+      <div class="conditional-block" id="historicoBlock">
+        <div class="field-group">
+          <label>Quais plataformas usou? <span class="required">*</span></label>
+          <div class="options-grid cols-2" style="margin-top: 8px;">
+            <label class="option-card"><input type="checkbox" name="plataformas" value="Meta Ads (Facebook/Instagram)" /><div class="option-label"><span class="option-icon">📘</span> Meta Ads <div class="check-indicator square"></div></div></label>
+            <label class="option-card"><input type="checkbox" name="plataformas" value="Google Ads" /><div class="option-label"><span class="option-icon">🔍</span> Google Ads <div class="check-indicator square"></div></div></label>
+            <label class="option-card"><input type="checkbox" name="plataformas" value="TikTok Ads" /><div class="option-label"><span class="option-icon">🎵</span> TikTok Ads <div class="check-indicator square"></div></div></label>
+            <label class="option-card"><input type="checkbox" name="plataformas" value="YouTube Ads" /><div class="option-label"><span class="option-icon">▶️</span> YouTube Ads <div class="check-indicator square"></div></div></label>
+          </div>
+        </div>
+        <div class="field-group" style="margin-top: 14px;">
+          <label>Qual foi o maior resultado que você obteve? <span class="required">*</span></label>
+          <textarea id="maiorResultado" placeholder="Ex: ROAS de 4x, CAC de R$15, 200 leads em um mês..." style="margin-top: 8px;"></textarea>
+        </div>
+        <div class="field-group">
+          <label>O que não funcionou / principal problema? <span class="required">*</span></label>
+          <textarea id="problemaAnterior" placeholder="Ex: criativo parou de converter, conta suspensa, custo subiu muito..." style="margin-top: 8px;"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-buttons">
+      <button class="btn btn-back" onclick="prevStep(5)">← Voltar</button>
+      <button class="btn btn-next" onclick="nextStep(5)">Continuar →</button>
+    </div>
+  </div>
+
+  <!-- ====== STEP 6: Infraestrutura ====== -->
+  <div class="card" id="step-6">
+    <div class="section-tag">⚙️ Seção 6</div>
+    <h2>Infraestrutura Digital</h2>
+    <p class="subtitle">O que você já tem configurado? Isso define o que é possível fazer imediatamente.</p>
+
+    <div class="field-group">
+      <label>Marque o que você já possui atualmente <span class="required">*</span></label>
+      <div class="infra-grid" style="margin-top: 10px;" id="opt-infra">
+        <label class="infra-item"><input type="checkbox" name="infra" value="Site ou Landing Page" /><div class="infra-box"><span class="icon">🌐</span> Site / Landing Page</div></label>
+        <label class="infra-item"><input type="checkbox" name="infra" value="Pixel do Meta instalado" /><div class="infra-box"><span class="icon">📊</span> Pixel do Meta</div></label>
+        <label class="infra-item"><input type="checkbox" name="infra" value="API de Conversões (CAPI)" /><div class="infra-box"><span class="icon">🔗</span> API de Conversões</div></label>
+        <label class="infra-item"><input type="checkbox" name="infra" value="WhatsApp Business" /><div class="infra-box"><span class="icon">💬</span> WhatsApp Business</div></label>
+        <label class="infra-item"><input type="checkbox" name="infra" value="Página no Facebook" /><div class="infra-box"><span class="icon">📘</span> Página no Facebook</div></label>
+        <label class="infra-item"><input type="checkbox" name="infra" value="Perfil Comercial no Instagram" /><div class="infra-box"><span class="icon">📸</span> Instagram Business</div></label>
+        <label class="infra-item"><input type="checkbox" name="infra" value="Conta no Meta Business Manager" /><div class="infra-box"><span class="icon">🏢</span> Business Manager</div></label>
+        <label class="infra-item"><input type="checkbox" name="infra" value="CRM ou ferramenta de automação" /><div class="infra-box"><span class="icon">🤖</span> CRM / Automação</div></label>
+        <label class="infra-item"><input type="checkbox" name="infra" value="E-mail marketing ativo" /><div class="infra-box"><span class="icon">📧</span> E-mail Marketing</div></label>
+        <label class="infra-item"><input type="checkbox" name="infra" value="Checkout de pagamento online" /><div class="infra-box"><span class="icon">💳</span> Checkout Online</div></label>
+      </div>
+      <div style="margin-top:10px; font-size:12px; color:#9ca3af;">Se não tem nenhum, continue sem marcar nada.</div>
+    </div>
+
+    <div class="field-group">
+      <label>URL do site ou landing page principal <span class="required">*</span></label>
+      <input type="text" id="urlSite" placeholder="https://www.seusite.com.br ou 'Não tenho'" />
+      <div class="error-msg" id="err-urlSite">Informe a URL ou escreva "Não tenho".</div>
+    </div>
+
+    <div class="nav-buttons">
+      <button class="btn btn-back" onclick="prevStep(6)">← Voltar</button>
+      <button class="btn btn-next" onclick="nextStep(6)">Continuar →</button>
+    </div>
+  </div>
+
+  <!-- ====== STEP 7: Restrições (NOVO) ====== -->
+  <div class="card" id="step-7">
+    <div class="section-tag">🚫 Seção 7</div>
+    <h2>Restrições e Público Negativo</h2>
+    <p class="subtitle">Tão importante quanto saber para quem vender é saber <strong>para quem não vender</strong>. Isso evita desperdício de verba com pessoas que nunca vão comprar.</p>
+
+    <div class="field-group">
+      <label>Para quem esse produto/serviço NÃO serve? <span class="required">*</span></label>
+      <textarea id="naoServe" placeholder="Ex: Pessoas que buscam soluções gratuitas, menores de 18 anos, quem já tem uma solução consolidada, empresas com mais de 500 funcionários..."></textarea>
+      <div class="error-msg" id="err-naoServe">Este campo é obrigatório.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Faixas etárias que devem ser excluídas <span class="required">*</span></label>
+      <div class="options-grid cols-3" style="margin-top:4px;">
+        <label class="option-card"><input type="checkbox" name="idadeExcluir" value="Menores de 18 anos" /><div class="option-label" style="justify-content:center; font-size:13px;">- 18 anos <div class="check-indicator square"></div></div></label>
+        <label class="option-card"><input type="checkbox" name="idadeExcluir" value="18-24 anos" /><div class="option-label" style="justify-content:center; font-size:13px;">18–24 <div class="check-indicator square"></div></div></label>
+        <label class="option-card"><input type="checkbox" name="idadeExcluir" value="25-34 anos" /><div class="option-label" style="justify-content:center; font-size:13px;">25–34 <div class="check-indicator square"></div></div></label>
+        <label class="option-card"><input type="checkbox" name="idadeExcluir" value="35-44 anos" /><div class="option-label" style="justify-content:center; font-size:13px;">35–44 <div class="check-indicator square"></div></div></label>
+        <label class="option-card"><input type="checkbox" name="idadeExcluir" value="45-54 anos" /><div class="option-label" style="justify-content:center; font-size:13px;">45–54 <div class="check-indicator square"></div></div></label>
+        <label class="option-card"><input type="checkbox" name="idadeExcluir" value="55+ anos" /><div class="option-label" style="justify-content:center; font-size:13px;">55+ <div class="check-indicator square"></div></div></label>
+      </div>
+      <div style="margin-top:8px; font-size:12px; color:#9ca3af;">Se não quiser excluir nenhuma faixa, continue sem marcar.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Gênero a excluir <span class="required">*</span></label>
+      <div class="options-grid cols-3" id="opt-generoExcluir">
+        <label class="option-card"><input type="radio" name="generoExcluir" value="Nenhum (mostrar para todos)" /><div class="option-label" style="justify-content:center; font-size:13px;">Nenhum <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="generoExcluir" value="Excluir homens" /><div class="option-label" style="justify-content:center; font-size:13px;">Excluir homens <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="generoExcluir" value="Excluir mulheres" /><div class="option-label" style="justify-content:center; font-size:13px;">Excluir mulheres <div class="check-indicator"></div></div></label>
+      </div>
+      <div class="error-msg" id="err-generoExcluir">Selecione uma opção.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Interesses ou comportamentos a excluir <span class="required">*</span></label>
+      <textarea id="interessesExcluir" placeholder="Ex: concorrentes da marca, pessoas que já são clientes, usuários de produtos substitutos gratuitos, estudantes sem renda..."></textarea>
+      <div class="error-msg" id="err-interessesExcluir">Este campo é obrigatório.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Localidades ou regiões a excluir <span class="required">*</span></label>
+      <input type="text" id="regiaoExcluir" placeholder="Ex: Não atendemos interior do AM e RR, ou 'Nenhuma exclusão' se atende todo o Brasil..." />
+      <div class="error-msg" id="err-regiaoExcluir">Este campo é obrigatório.</div>
+    </div>
+
+    <div class="nav-buttons">
+      <button class="btn btn-back" onclick="prevStep(7)">← Voltar</button>
+      <button class="btn btn-next" onclick="nextStep(7)">Continuar →</button>
+    </div>
+  </div>
+
+  <!-- ====== STEP 8: Contexto Final ====== -->
+  <div class="card" id="step-8">
+    <div class="section-tag">💡 Seção 8</div>
+    <h2>Contexto e Expectativas</h2>
+    <p class="subtitle">As últimas perguntas. Quanto mais detalhe aqui, mais precisa será a estratégia.</p>
+
+    <div class="field-group">
+      <label>Qual é a principal dificuldade do negócio hoje? <span class="required">*</span></label>
+      <div class="options-grid" id="opt-dificuldade">
+        <label class="option-card"><input type="radio" name="dificuldade" value="Poucos clientes / baixo volume de vendas" /><div class="option-label"><span class="option-icon">📉</span> Poucos clientes / baixo volume de vendas <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="dificuldade" value="Custo de aquisição alto demais" /><div class="option-label"><span class="option-icon">💸</span> Custo de aquisição alto demais <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="dificuldade" value="Criativos e conteúdo não convertem" /><div class="option-label"><span class="option-icon">🎨</span> Criativos e conteúdo não convertem <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="dificuldade" value="Dificuldade em escalar sem explodir o CAC" /><div class="option-label"><span class="option-icon">📊</span> Dificuldade em escalar sem explodir o CAC <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="dificuldade" value="Não tenho clareza das métricas / o que otimizar" /><div class="option-label"><span class="option-icon">🔍</span> Não tenho clareza das métricas <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="dificuldade" value="Não sei por onde começar (iniciante)" /><div class="option-label"><span class="option-icon">🌱</span> Não sei por onde começar <div class="check-indicator"></div></div></label>
+      </div>
+      <div class="error-msg" id="err-dificuldade">Selecione uma opção.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Em quanto tempo você precisa de resultado? <span class="required">*</span></label>
+      <div class="options-grid cols-2" id="opt-prazo">
+        <label class="option-card"><input type="radio" name="prazo" value="Urgente (agora / próximas semanas)" /><div class="option-label"><span class="option-icon">🔥</span> Urgente (próximas semanas) <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="prazo" value="Curto prazo (1-2 meses)" /><div class="option-label"><span class="option-icon">📅</span> Curto prazo (1-2 meses) <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="prazo" value="Médio prazo (3-6 meses)" /><div class="option-label"><span class="option-icon">🎯</span> Médio prazo (3-6 meses) <div class="check-indicator"></div></div></label>
+        <label class="option-card"><input type="radio" name="prazo" value="Construção de longo prazo (6+ meses)" /><div class="option-label"><span class="option-icon">🏗️</span> Longo prazo (6+ meses) <div class="check-indicator"></div></div></label>
+      </div>
+      <div class="error-msg" id="err-prazo">Selecione uma opção.</div>
+    </div>
+
+    <div class="field-group">
+      <label>Informação adicional relevante <span class="required">*</span></label>
+      <textarea id="infoAdicional" placeholder="Sazonalidade, eventos, restrições, lançamentos previstos, histórico importante... Se não tiver nada, escreva 'Nenhuma'"></textarea>
+      <div class="error-msg" id="err-infoAdicional">Preencha ou escreva "Nenhuma".</div>
+    </div>
+
+    <div class="field-group">
+      <label>Nome do responsável / cliente <span class="required">*</span></label>
+      <input type="text" id="nomeCliente" placeholder="Nome completo do responsável" />
+      <div class="error-msg" id="err-nomeCliente">Informe o nome do responsável.</div>
+    </div>
+
+    <div class="nav-buttons">
+      <button class="btn btn-back" onclick="prevStep(8)">← Voltar</button>
+      <button class="btn btn-finish" onclick="finishForm()">✅ Gerar Briefing</button>
+    </div>
+  </div>
+
+  <!-- ====== BRIEFING FINAL ====== -->
+  <div class="briefing-screen" id="briefingScreen">
+    <div class="briefing-header">
+      <div class="success-icon">✅</div>
+      <h2>Diagnóstico Concluído</h2>
+      <p>O briefing estratégico do cliente foi gerado. Revise e exporte o PDF.</p>
+    </div>
+
+    <div class="briefing-card" id="briefingContent">
+      <div class="briefing-section-title">🏢 Sobre o Negócio</div>
+      <div id="bNegocio"></div>
+      <hr class="divider" />
+      <div class="briefing-section-title">💰 Oferta e Financeiro</div>
+      <div id="bOferta"></div>
+      <hr class="divider" />
+      <div class="briefing-section-title">🎯 Público-Alvo</div>
+      <div id="bPublico"></div>
+      <hr class="divider" />
+      <div class="briefing-section-title">🚀 Objetivos e Metas</div>
+      <div id="bObjetivos"></div>
+      <hr class="divider" />
+      <div class="briefing-section-title">💳 Orçamento e Histórico</div>
+      <div id="bOrcamento"></div>
+      <hr class="divider" />
+      <div class="briefing-section-title">⚙️ Infraestrutura</div>
+      <div id="bInfra"></div>
+      <hr class="divider" />
+      <div class="briefing-section-title">🚫 Restrições</div>
+      <div id="bRestricoes"></div>
+      <hr class="divider" />
+      <div class="briefing-section-title">💡 Contexto</div>
+      <div id="bContexto"></div>
+    </div>
+
+    <div id="alertas"></div>
+
+    <div id="webhookStatus" style="text-align:center;margin:16px 0;font-size:14px;font-weight:600;min-height:22px;"></div>
+
+    <div class="btn-group-final">
+      <button class="btn-strategy" onclick="gerarEstrategia()">🚀 Gerar Estratégia Completa</button>
+      <button class="btn-pdf" onclick="gerarPDF()" style="flex:0.6;font-size:13px;">📄 PDF Briefing</button>
+    </div>
+    <div style="text-align:center;margin-top:10px;">
+      <button class="btn-restart" onclick="reiniciar()">🔄 Novo Diagnóstico</button>
+    </div>
+  </div>
+
+  <!-- ====== TELA DE ESTRATÉGIA ====== -->
+  <div class="strategy-screen" id="strategiaScreen">
+
+    <div class="strategy-header" id="s-header">
+      <div class="s-icon">🎯</div>
+      <h2>Estratégia de Tráfego Gerada</h2>
+      <p id="s-header-sub">Análise completa baseada no diagnóstico do cliente</p>
+      <div class="score-bar-wrapper">
+        <div class="score-label">ÍNDICE DE PRONTIDÃO PARA ANUNCIAR</div>
+        <div class="score-track"><div class="score-fill" id="scoreFill" style="width:0%"></div></div>
+        <div class="score-number" id="scoreNum">—</div>
+      </div>
+    </div>
+
+    <!-- 1. Diagnóstico Executivo -->
+    <div class="s-card">
+      <div class="s-card-title"><div class="s-icon-sm icon-red">🔍</div> Diagnóstico Executivo</div>
+      <div class="s-grid cols-2" id="s-diagnostico"></div>
+    </div>
+
+    <!-- 2. Estrutura de Campanhas -->
+    <div class="s-card">
+      <div class="s-card-title"><div class="s-icon-sm icon-blue">📋</div> Estrutura de Campanhas Recomendada</div>
+      <div id="s-campanhas"></div>
+    </div>
+
+    <!-- 3. Funil -->
+    <div class="s-card">
+      <div class="s-card-title"><div class="s-icon-sm icon-red">🔽</div> Estratégia de Funil</div>
+      <div class="funnel-steps" id="s-funil"></div>
+    </div>
+
+    <!-- 4. Orçamento -->
+    <div class="s-card">
+      <div class="s-card-title"><div class="s-icon-sm icon-yellow">💰</div> Alocação de Orçamento</div>
+      <div id="s-orcamento-alloc"></div>
+    </div>
+
+    <!-- 5. Segmentação -->
+    <div class="s-card">
+      <div class="s-card-title"><div class="s-icon-sm icon-purple">🎯</div> Estratégia de Segmentação</div>
+      <div id="s-segmentacao"></div>
+    </div>
+
+    <!-- 6. Criativos -->
+    <div class="s-card">
+      <div class="s-card-title"><div class="s-icon-sm icon-blue">🎨</div> Direção de Criativos</div>
+      <div id="s-criativos"></div>
+    </div>
+
+    <!-- 7. KPIs -->
+    <div class="s-card">
+      <div class="s-card-title"><div class="s-icon-sm icon-green">📊</div> KPIs Esperados</div>
+      <div class="kpi-grid" id="s-kpis"></div>
+    </div>
+
+    <!-- 8. Plano de Ação -->
+    <div class="s-card">
+      <div class="s-card-title"><div class="s-icon-sm icon-red">⚡</div> Plano de Ação — Próximos Passos</div>
+      <ul class="action-list" id="s-acoes"></ul>
+    </div>
+
+    <!-- 9. Riscos -->
+    <div class="s-card">
+      <div class="s-card-title"><div class="s-icon-sm icon-yellow">⚠️</div> Riscos e Pontos de Atenção</div>
+      <div id="s-riscos"></div>
+    </div>
+
+    <div class="btn-group-final">
+      <button class="btn-pdf-strategy" onclick="exportarEstrategiaPDF()">📄 Exportar Estratégia em PDF</button>
+      <button class="btn-restart" onclick="reiniciar()" style="padding:16px 20px;">🔄 Novo</button>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+  // =====================================================
+  // CONFIGURAÇÃO DO WEBHOOK ZAPIER
+  // Cole aqui a URL do seu Zap (Webhooks by Zapier)
+  // =====================================================
+  const ZAPIER_WEBHOOK_URL = 'https://hooks.zapier.com/hooks/catch/28027656/420kaut/';
+
+  async function enviarWebhook(data) {
+    const statusEl = document.getElementById('webhookStatus');
+    if (!ZAPIER_WEBHOOK_URL || ZAPIER_WEBHOOK_URL === 'COLE_AQUI_A_URL_DO_SEU_ZAP') return;
+    try {
+      statusEl.innerHTML = '⏳ Enviando briefing...';
+      statusEl.style.color = '#f59e0b';
+      const params = new URLSearchParams({ ...data, timestamp: new Date().toISOString() });
+      await fetch(ZAPIER_WEBHOOK_URL, {
+        method: 'POST',
+        body: params,
+        mode: 'no-cors'
+      });
+      statusEl.innerHTML = '✅ Briefing enviado com sucesso! Seu gestor de tráfego já foi notificado.';
+      statusEl.style.color = '#10b981';
+    } catch (e) {
+      statusEl.innerHTML = '⚠️ Não foi possível enviar automaticamente. Por favor, exporte o PDF e encaminhe ao seu gestor.';
+      statusEl.style.color = '#ef4444';
+    }
+  }
+
+  let currentStep = 1;
+  const totalSteps = 8;
+  const stepLabels = [
+    'Sobre o Negócio','Oferta e Números','Público-Alvo',
+    'Objetivos e Metas','Orçamento','Infraestrutura',
+    'Restrições','Contexto Final'
+  ];
+
+  const stepsNav = document.getElementById('stepsNav');
+  for (let i = 1; i <= totalSteps; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'step-dot'; dot.id = `dot-${i}`; dot.title = stepLabels[i-1];
+    stepsNav.appendChild(dot);
+  }
+  updateProgress();
+
+  function updateProgress() {
+    const pct = Math.round(((currentStep - 1) / totalSteps) * 100);
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('progressCount').textContent = pct + '%';
+    document.getElementById('progressLabel').textContent = `Seção ${currentStep} de ${totalSteps} — ${stepLabels[currentStep-1]}`;
+    for (let i = 1; i <= totalSteps; i++) {
+      const dot = document.getElementById(`dot-${i}`);
+      dot.className = 'step-dot';
+      if (i < currentStep) dot.classList.add('completed');
+      else if (i === currentStep) dot.classList.add('active');
+    }
+  }
+
+  // ---- VALIDATION ----
+  function validate(step) {
+    let ok = true;
+
+    function req(id) {
+      const el = document.getElementById(id);
+      const errEl = document.getElementById('err-' + id);
+      if (!el) return;
+      const val = el.value.trim();
+      if (!val) {
+        el.classList.add('error');
+        if (errEl) errEl.classList.add('visible');
+        ok = false;
+      } else {
+        el.classList.remove('error');
+        if (errEl) errEl.classList.remove('visible');
+      }
+    }
+
+    function reqSelect(id) {
+      const el = document.getElementById(id);
+      const errEl = document.getElementById('err-' + id);
+      if (!el) return;
+      if (!el.value) {
+        el.classList.add('error');
+        if (errEl) errEl.classList.add('visible');
+        ok = false;
+      } else {
+        el.classList.remove('error');
+        if (errEl) errEl.classList.remove('visible');
+      }
+    }
+
+    function reqRadio(name) {
+      const errEl = document.getElementById('err-' + name);
+      const checked = document.querySelector(`input[name="${name}"]:checked`);
+      if (!checked) {
+        if (errEl) errEl.classList.add('visible');
+        ok = false;
+      } else {
+        if (errEl) errEl.classList.remove('visible');
+      }
+    }
+
+    function reqCheckbox(name) {
+      const errEl = document.getElementById('err-' + name);
+      const checked = document.querySelectorAll(`input[name="${name}"]:checked`);
+      if (checked.length === 0) {
+        if (errEl) errEl.classList.add('visible');
+        ok = false;
+      } else {
+        if (errEl) errEl.classList.remove('visible');
+      }
+    }
+
+    function reqNumber(id, wrapperId) {
+      const el = document.getElementById(id);
+      const errEl = document.getElementById('err-' + id);
+      const wrapper = wrapperId ? document.getElementById(wrapperId) : null;
+      if (!el) return;
+      if (el.value === '' || el.value === null) {
+        if (wrapper) wrapper.classList.add('error');
+        if (errEl) errEl.classList.add('visible');
+        ok = false;
+      } else {
+        if (wrapper) wrapper.classList.remove('error');
+        if (errEl) errEl.classList.remove('visible');
+      }
+    }
+
+    if (step === 1) {
+      req('nomeNegocio');
+      reqSelect('segmento');
+      req('descricaoProduto');
+      reqRadio('tempoNegocio');
+      reqRadio('abrangencia');
+    }
+    if (step === 2) {
+      reqNumber('ticketMedio', 'wrap-ticketMedio');
+      req('diferenciais');
+      req('concorrentes');
+      reqRadio('ofertaEspecial');
+    }
+    if (step === 3) {
+      req('clienteIdeal');
+      reqRadio('idadePublico');
+      reqRadio('genero');
+      req('doresCliente');
+      req('interesses');
+    }
+    if (step === 4) {
+      reqCheckbox('objetivo');
+      req('metaMensal');
+      reqNumber('cacMaximo', 'wrap-cacMaximo');
+      reqNumber('roasMinimo', 'wrap-roasMinimo');
+    }
+    if (step === 5) {
+      reqRadio('orcamento');
+      reqRadio('experienciaTrafego');
+    }
+    if (step === 6) {
+      req('urlSite');
+    }
+    if (step === 7) {
+      req('naoServe');
+      reqRadio('generoExcluir');
+      req('interessesExcluir');
+      req('regiaoExcluir');
+    }
+    if (step === 8) {
+      reqRadio('dificuldade');
+      reqRadio('prazo');
+      req('infoAdicional');
+      req('nomeCliente');
+    }
+
+    return ok;
+  }
+
+  function nextStep(step) {
+    if (!validate(step)) {
+      const firstErr = document.querySelector('.error, .error-msg.visible');
+      if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    document.getElementById(`step-${step}`).classList.remove('active');
+    currentStep = step + 1;
+    document.getElementById(`step-${currentStep}`).classList.add('active');
+    updateProgress();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function prevStep(step) {
+    document.getElementById(`step-${step}`).classList.remove('active');
+    currentStep = step - 1;
+    document.getElementById(`step-${currentStep}`).classList.add('active');
+    updateProgress();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function toggleConditional(id, show) {
+    const el = document.getElementById(id);
+    if (show) el.classList.add('visible'); else el.classList.remove('visible');
+  }
+
+  function updateRange(id, suffix, valId) {
+    document.getElementById(valId).textContent = document.getElementById(id).value + suffix;
+  }
+
+  function getRadio(name) {
+    const el = document.querySelector(`input[name="${name}"]:checked`);
+    return el ? el.value : '—';
+  }
+
+  function getCheckboxes(name) {
+    const els = document.querySelectorAll(`input[name="${name}"]:checked`);
+    return els.length ? Array.from(els).map(e => e.value).join(' • ') : '—';
+  }
+
+  function row(key, val) {
+    if (!val || val === '—') val = '<span style="color:#9ca3af;font-weight:400">Não informado</span>';
+    return `<div class="briefing-row"><span class="briefing-key">${key}</span><span class="briefing-val">${val}</span></div>`;
+  }
+
+  function finishForm() {
+    if (!validate(8)) return;
+
+    for (let i = 1; i <= totalSteps; i++) {
+      const el = document.getElementById(`step-${i}`);
+      if (el) el.classList.remove('active');
+    }
+    document.querySelector('.progress-wrapper').style.display = 'none';
+
+    const data = {
+      nomeNegocio: document.getElementById('nomeNegocio').value || '—',
+      segmento: document.getElementById('segmento').value || '—',
+      descricaoProduto: document.getElementById('descricaoProduto').value || '—',
+      tempoNegocio: getRadio('tempoNegocio'),
+      abrangencia: getRadio('abrangencia'),
+      ticketMedio: document.getElementById('ticketMedio').value,
+      margem: document.getElementById('margem').value + '%',
+      diferenciais: document.getElementById('diferenciais').value || '—',
+      concorrentes: document.getElementById('concorrentes').value || '—',
+      ofertaEspecial: getRadio('ofertaEspecial'),
+      descOferta: document.getElementById('descOferta').value || '—',
+      clienteIdeal: document.getElementById('clienteIdeal').value || '—',
+      idadePublico: getRadio('idadePublico'),
+      genero: getRadio('genero'),
+      doresCliente: document.getElementById('doresCliente').value || '—',
+      interesses: document.getElementById('interesses').value || '—',
+      objetivo: getCheckboxes('objetivo'),
+      metaMensal: document.getElementById('metaMensal').value || '—',
+      cacMaximo: document.getElementById('cacMaximo').value ? 'R$ ' + document.getElementById('cacMaximo').value : '—',
+      roasMinimo: document.getElementById('roasMinimo').value ? document.getElementById('roasMinimo').value + 'x' : '—',
+      orcamento: getRadio('orcamento'),
+      experiencia: getRadio('experienciaTrafego'),
+      plataformas: getCheckboxes('plataformas'),
+      maiorResultado: document.getElementById('maiorResultado').value || '—',
+      problemaAnterior: document.getElementById('problemaAnterior').value || '—',
+      infra: getCheckboxes('infra'),
+      urlSite: document.getElementById('urlSite').value || '—',
+      naoServe: document.getElementById('naoServe').value || '—',
+      idadeExcluir: getCheckboxes('idadeExcluir'),
+      generoExcluir: getRadio('generoExcluir'),
+      interessesExcluir: document.getElementById('interessesExcluir').value || '—',
+      regiaoExcluir: document.getElementById('regiaoExcluir').value || '—',
+      dificuldade: getRadio('dificuldade'),
+      prazo: getRadio('prazo'),
+      infoAdicional: document.getElementById('infoAdicional').value || '—',
+      nomeCliente: document.getElementById('nomeCliente').value || '—',
+    };
+
+    window._briefingData = data;
+
+    document.getElementById('bNegocio').innerHTML =
+      row('Empresa', data.nomeNegocio) + row('Segmento', data.segmento) +
+      row('Produto/Serviço', data.descricaoProduto) + row('Tempo de mercado', data.tempoNegocio) +
+      row('Abrangência', data.abrangencia);
+
+    document.getElementById('bOferta').innerHTML =
+      row('Ticket Médio', data.ticketMedio ? 'R$ ' + parseFloat(data.ticketMedio).toLocaleString('pt-BR') : '—') +
+      row('Margem de Lucro', data.margem) + row('Diferenciais', data.diferenciais) +
+      row('Concorrentes', data.concorrentes) + row('Oferta Especial', data.ofertaEspecial) +
+      (data.ofertaEspecial === 'Sim' ? row('Descrição da Oferta', data.descOferta) : '');
+
+    document.getElementById('bPublico').innerHTML =
+      row('Cliente Ideal', data.clienteIdeal) + row('Faixa Etária', data.idadePublico) +
+      row('Gênero', data.genero) + row('Dores e Objeções', data.doresCliente) +
+      row('Interesses', data.interesses);
+
+    document.getElementById('bObjetivos').innerHTML =
+      row('Objetivos', data.objetivo) + row('Meta Mensal', data.metaMensal) +
+      row('CAC Máximo', data.cacMaximo) + row('ROAS Mínimo', data.roasMinimo);
+
+    document.getElementById('bOrcamento').innerHTML =
+      row('Orçamento Mensal', data.orcamento) + row('Experiência com Tráfego', data.experiencia) +
+      (data.experiencia === 'Já anunciei antes' ?
+        row('Plataformas Usadas', data.plataformas) +
+        row('Melhor Resultado', data.maiorResultado) +
+        row('Principal Problema', data.problemaAnterior) : '');
+
+    const infraList = data.infra !== '—'
+      ? data.infra.split(' • ').map(i => `<span class="tag green">✓ ${i}</span>`).join('')
+      : '<span style="color:#9ca3af">Nenhum item selecionado</span>';
+    document.getElementById('bInfra').innerHTML =
+      `<div class="briefing-row"><span class="briefing-key">Itens ativos</span><div><div class="tag-list">${infraList}</div></div></div>` +
+      row('URL do Site', data.urlSite !== '—' ? `<a href="${data.urlSite}" target="_blank" style="color:#e94560">${data.urlSite}</a>` : '—');
+
+    const idadeExcList = data.idadeExcluir !== '—'
+      ? data.idadeExcluir.split(' • ').map(i => `<span class="tag red">✗ ${i}</span>`).join('')
+      : '<span style="color:#9ca3af">Nenhuma faixa excluída</span>';
+    document.getElementById('bRestricoes').innerHTML =
+      row('Não serve para', data.naoServe) +
+      `<div class="briefing-row"><span class="briefing-key">Faixas excluídas</span><div><div class="tag-list">${idadeExcList}</div></div></div>` +
+      row('Gênero excluído', data.generoExcluir) +
+      row('Interesses excluídos', data.interessesExcluir) +
+      row('Regiões excluídas', data.regiaoExcluir);
+
+    document.getElementById('bContexto').innerHTML =
+      row('Principal Dificuldade', data.dificuldade) + row('Prazo para Resultado', data.prazo) +
+      row('Informações Adicionais', data.infoAdicional) + row('Responsável', data.nomeCliente);
+
+    // Alertas automáticos
+    let alertasHtml = '';
+    const infraItems = (data.infra || '').split(' • ');
+    if (!infraItems.includes('Pixel do Meta instalado'))
+      alertasHtml += `<div class="alert-box">⚠️ <div><strong>Pixel não instalado.</strong> Sem o Pixel do Meta, rastreamento e otimização ficam comprometidos. Prioridade máxima antes de qualquer campanha.</div></div>`;
+    if (!infraItems.includes('Site ou Landing Page'))
+      alertasHtml += `<div class="alert-box">⚠️ <div><strong>Sem landing page.</strong> Campanhas de vendas precisam de uma página de destino. Avalie criar uma antes de investir em tráfego.</div></div>`;
+    if (data.orcamento === 'Até R$ 500/mês' && data.objetivo.includes('Vendas diretas'))
+      alertasHtml += `<div class="alert-box">⚠️ <div><strong>Orçamento restrito.</strong> Com menos de R$500/mês e objetivo de vendas diretas, inicie com um único produto e oferta de alta conversão.</div></div>`;
+    document.getElementById('alertas').innerHTML = alertasHtml;
+
+    document.getElementById('briefingScreen').classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Envia dados automaticamente ao Zapier
+    enviarWebhook(data);
+  }
+
+  function gerarPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+    const data = window._briefingData;
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('pt-BR');
+
+    const marginL = 20, pageW = 210, contentW = pageW - 40;
+    let y = 0;
+    const C = { primary:[26,26,46], accent:[233,69,96], gray:[108,117,125], white:[255,255,255], border:[226,232,240] };
+
+    function addPage() { doc.addPage(); y = 20; }
+    function checkBreak(n=20) { if (y + n > 270) addPage(); }
+
+    // CAPA
+    doc.setFillColor(...C.primary); doc.rect(0,0,210,297,'F');
+    doc.setFillColor(...C.accent); doc.rect(0,0,8,297,'F');
+    doc.setFontSize(10); doc.setTextColor(...C.accent); doc.setFont('helvetica','bold');
+    doc.text('AGENTE DE TRÁFEGO PAGO', 20, 50);
+    doc.setFontSize(28); doc.setTextColor(...C.white);
+    doc.text('DIAGNÓSTICO', 20, 70); doc.text('ESTRATÉGICO', 20, 84);
+    doc.setFontSize(11); doc.setTextColor(180,180,200); doc.setFont('helvetica','normal');
+    doc.text('Briefing completo gerado pelo Questionário de Tráfego Pago', 20, 102);
+    doc.setFillColor(40,40,70); doc.roundedRect(20,200,contentW,60,4,4,'F');
+    doc.setFontSize(9); doc.setTextColor(150,150,180);
+    doc.text('EMPRESA / CLIENTE',30,216); doc.text('SEGMENTO',30,234);
+    doc.text('DATA DE GERAÇÃO',110,216); doc.text('RESPONSÁVEL',110,234);
+    doc.setFontSize(12); doc.setTextColor(...C.white); doc.setFont('helvetica','bold');
+    doc.text((data.nomeNegocio||'').substring(0,35),30,224);
+    doc.text((data.segmento||'').substring(0,30),30,242);
+    doc.text(dateStr,110,224);
+    doc.text((data.nomeCliente||'').substring(0,25),110,242);
+    doc.setFontSize(8); doc.setTextColor(100,100,130); doc.setFont('helvetica','normal');
+    doc.text('Documento gerado automaticamente | Confidencial',20,285);
+
+    // CONTEÚDO
+    doc.addPage(); y = 20;
+
+    function sTitle(t) {
+      checkBreak(18);
+      doc.setFillColor(...C.accent); doc.rect(marginL,y,4,10,'F');
+      doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(...C.primary);
+      doc.text(t,marginL+8,y+7); y += 16;
+    }
+
+    function iRow(label, value, long=false) {
+      checkBreak(long?20:12);
+      doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(...C.gray);
+      doc.text(label,marginL,y);
+      doc.setFont('helvetica','bold'); doc.setTextColor(...C.primary);
+      const val = (value&&value!=='—') ? value : 'Não informado';
+      if (long) {
+        const lines = doc.splitTextToSize(val,contentW-55);
+        doc.text(lines,marginL+55,y); y += Math.max(lines.length*5,8);
+      } else { doc.text(val.substring(0,70),marginL+55,y); y+=9; }
+      doc.setDrawColor(...C.border); doc.line(marginL,y,marginL+contentW,y); y+=4;
+    }
+
+    doc.setFontSize(18); doc.setFont('helvetica','bold'); doc.setTextColor(...C.primary);
+    doc.text('Briefing Estratégico do Cliente',marginL,y); y+=6;
+    doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(...C.gray);
+    doc.text(`Gerado em ${dateStr} | ${data.nomeNegocio}`,marginL,y); y+=14;
+    doc.setDrawColor(...C.accent); doc.setLineWidth(0.5); doc.line(marginL,y,marginL+contentW,y);
+    doc.setLineWidth(0.2); y+=12;
+
+    sTitle('1. Sobre o Negócio');
+    iRow('Empresa',data.nomeNegocio); iRow('Segmento',data.segmento);
+    iRow('Produto/Serviço',data.descricaoProduto,true);
+    iRow('Tempo de Mercado',data.tempoNegocio); iRow('Abrangência',data.abrangencia); y+=6;
+
+    sTitle('2. Oferta e Financeiro');
+    iRow('Ticket Médio',data.ticketMedio?'R$ '+parseFloat(data.ticketMedio).toLocaleString('pt-BR'):'—');
+    iRow('Margem de Lucro',data.margem); iRow('Diferenciais',data.diferenciais,true);
+    iRow('Concorrentes',data.concorrentes);
+    if(data.ofertaEspecial==='Sim') iRow('Oferta Especial',data.descOferta,true); y+=6;
+
+    sTitle('3. Público-Alvo');
+    iRow('Cliente Ideal',data.clienteIdeal,true); iRow('Faixa Etária',data.idadePublico);
+    iRow('Gênero',data.genero); iRow('Dores e Objeções',data.doresCliente,true);
+    iRow('Interesses',data.interesses,true); y+=6;
+
+    sTitle('4. Objetivos e Metas');
+    iRow('Objetivos',data.objetivo,true); iRow('Meta Mensal',data.metaMensal);
+    iRow('CAC Máximo',data.cacMaximo); iRow('ROAS Mínimo',data.roasMinimo); y+=6;
+
+    sTitle('5. Orçamento e Histórico');
+    iRow('Orçamento Mensal',data.orcamento); iRow('Experiência Anterior',data.experiencia);
+    if(data.experiencia==='Já anunciei antes') {
+      iRow('Plataformas',data.plataformas); iRow('Melhor Resultado',data.maiorResultado,true);
+      iRow('Principal Problema',data.problemaAnterior,true);
+    } y+=6;
+
+    sTitle('6. Infraestrutura Digital');
+    iRow('Itens Ativos',data.infra,true); iRow('URL do Site',data.urlSite); y+=6;
+
+    sTitle('7. Restrições e Público Negativo');
+    iRow('Não serve para',data.naoServe,true);
+    iRow('Faixas etárias excluídas',data.idadeExcluir!=='—'?data.idadeExcluir:'Nenhuma');
+    iRow('Gênero excluído',data.generoExcluir);
+    iRow('Interesses excluídos',data.interessesExcluir,true);
+    iRow('Regiões excluídas',data.regiaoExcluir,true); y+=6;
+
+    sTitle('8. Contexto e Prazo');
+    iRow('Principal Dificuldade',data.dificuldade,true); iRow('Prazo para Resultado',data.prazo);
+    iRow('Informações Adicionais',data.infoAdicional,true); iRow('Responsável',data.nomeCliente);
+
+    // Alertas no PDF
+    const infraItems = (data.infra||'').split(' • ');
+    const alertasList = [];
+    if(!infraItems.includes('Pixel do Meta instalado')) alertasList.push('Pixel do Meta não instalado — prioridade máxima antes de qualquer campanha.');
+    if(!infraItems.includes('Site ou Landing Page')) alertasList.push('Sem landing page — necessário para campanhas de conversão.');
+    if(data.orcamento==='Até R$ 500/mês'&&data.objetivo.includes('Vendas diretas')) alertasList.push('Orçamento restrito com objetivo de vendas diretas — inicie com produto único.');
+
+    if(alertasList.length>0) {
+      checkBreak(40); y+=8;
+      const h = 12+alertasList.length*12;
+      doc.setFillColor(255,251,235); doc.roundedRect(marginL,y,contentW,h,3,3,'F');
+      doc.setDrawColor(252,211,77); doc.roundedRect(marginL,y,contentW,h,3,3,'S');
+      y+=10; doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(120,53,15);
+      alertasList.forEach(a=>{ const lines=doc.splitTextToSize('⚠  '+a,contentW-12); doc.text(lines,marginL+6,y); y+=lines.length*6+4; });
+    }
+
+    const pc = doc.internal.getNumberOfPages();
+    for(let i=1;i<=pc;i++) {
+      doc.setPage(i);
+      if(i>1) {
+        doc.setFontSize(8); doc.setTextColor(...C.gray);
+        doc.text(`Diagnóstico Estratégico — ${data.nomeNegocio} — ${dateStr}`,marginL,290);
+        doc.text(`Página ${i} de ${pc}`,190,290,{align:'right'});
+      }
+    }
+
+    const fn = `briefing-${(data.nomeNegocio||'cliente').toLowerCase().replace(/\s+/g,'-')}-${dateStr.replace(/\//g,'-')}.pdf`;
+    doc.save(fn);
+  }
+
+  function reiniciar() { location.reload(); }
+
+  function ativarDemo() {
+    window._briefingData = {
+      nomeNegocio: 'FitLife Suplementos',
+      segmento: 'E-commerce / Loja Virtual',
+      descricaoProduto: 'Suplementos alimentares premium para praticantes de musculação: whey protein, creatina, pré-treino e vitaminas. Qualidade importada com certificação ANVISA e entrega em até 48h.',
+      tempoNegocio: '1 a 3 anos', abrangencia: 'Nacional',
+      ticketMedio: '189', margem: '55%',
+      diferenciais: 'Certificação ANVISA, entrega 48h para todo o Brasil, atendimento 24h via WhatsApp, cashback de 10% no programa de fidelidade.',
+      concorrentes: 'Growth Supplements, Integral Médica, Max Titanium',
+      ofertaEspecial: 'Sim', descOferta: 'Compre 2 wheys e ganhe 1 creatina grátis + frete grátis. Válido até fim do mês.',
+      clienteIdeal: 'Homens e mulheres 20-35 anos, praticantes de academia há 6+ meses, renda R$2.000-6.000, que já consomem suplementos mas buscam qualidade superior e praticidade no e-commerce.',
+      idadePublico: '25-34', genero: 'Ambos',
+      doresCliente: 'Medo de produto falsificado, demora na entrega, preço alto sem garantia de eficácia, dificuldade de encontrar variedade em um só lugar.',
+      interesses: 'musculação, crossfit, nutrição esportiva, academia, bodybuilding, fitness, estilo de vida saudável',
+      objetivo: 'Vendas diretas (e-commerce / checkout) • Branding / Reconhecimento de marca • Tráfego para site / conteúdo',
+      metaMensal: '300 vendas/mês com ticket médio de R$ 189',
+      cacMaximo: 'R$ 35', roasMinimo: '4x',
+      orcamento: 'R$ 1.500 a R$ 5.000/mês', experiencia: 'Já anunciei antes',
+      plataformas: 'Meta Ads (Facebook/Instagram) • Google Ads',
+      maiorResultado: 'ROAS de 3,8x em campanha de conversão com vídeo antes/depois. CAC médio de R$ 42.',
+      problemaAnterior: 'Criativos saturaram rápido, frequência subiu e CAC explodiu. Dificuldade de escalar sem perder ROAS.',
+      infra: 'Site ou Landing Page • Pixel do Meta instalado • WhatsApp Business • Página no Facebook • Perfil Comercial no Instagram • Conta no Meta Business Manager • Checkout de pagamento online',
+      urlSite: 'https://www.fitlifesuplementos.com.br',
+      naoServe: 'Veganos estritos (produtos contêm derivados do leite), menores de 16 anos sem orientação, revendedores sem CNPJ, quem busca só o preço mais barato.',
+      idadeExcluir: 'Menores de 18 anos', generoExcluir: 'Nenhum (mostrar para todos)',
+      interessesExcluir: 'veganos estritos, concorrentes da marca, revendedores',
+      regiaoExcluir: 'Nenhuma — atendemos todo o Brasil com frete grátis',
+      dificuldade: 'Dificuldade em escalar sem explodir o CAC', prazo: 'Curto prazo (1-2 meses)',
+      infoAdicional: 'Black Friday em novembro é nosso pico de vendas — precisamos com campanhas testadas antes. Temos influenciadores parceiros para UGC.',
+      nomeCliente: 'Carlos Mendes — CEO FitLife',
+    };
+    document.querySelector('.progress-wrapper').style.display = 'none';
+    for (let i = 1; i <= 8; i++) { const el = document.getElementById('step-'+i); if(el) el.classList.remove('active'); }
+    document.getElementById('briefingScreen').classList.remove('active');
+    gerarEstrategia();
+  }
+
+  // ============================================================
+  // FASE 2 — MOTOR DE ESTRATÉGIA
+  // ============================================================
+
+  function gerarEstrategia() {
+    const data = window._briefingData;
+    if (!data) return;
+
+    // Hide briefing, show strategy
+    document.getElementById('briefingScreen').classList.remove('active');
+    document.getElementById('strategiaScreen').classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    const objetivos = data.objetivo !== '—' ? data.objetivo.split(' • ') : [];
+    const hasVendas   = objetivos.some(o => o.includes('Vendas'));
+    const hasLeads    = objetivos.some(o => o.includes('Leads'));
+    const hasZap      = objetivos.some(o => o.includes('WhatsApp'));
+    const hasBranding = objetivos.some(o => o.includes('Branding'));
+    const hasLanc     = objetivos.some(o => o.includes('Lançamento'));
+    const hasTrafego  = objetivos.some(o => o.includes('Tráfego'));
+
+    const infraItems  = (data.infra || '').split(' • ');
+    const hasPixel    = infraItems.includes('Pixel do Meta instalado');
+    const hasLP       = infraItems.includes('Site ou Landing Page');
+    const hasCAPI     = infraItems.includes('API de Conversões (CAPI)');
+    const hasWZap     = infraItems.includes('WhatsApp Business');
+    const hasBM       = infraItems.includes('Conta no Meta Business Manager');
+    const hasFBPage   = infraItems.includes('Página no Facebook');
+    const hasIGBiz    = infraItems.includes('Perfil Comercial no Instagram');
+
+    const experiencia = data.experiencia || '';
+    const isNewbie    = experiencia === 'Nunca anunciei';
+    const orcamento   = data.orcamento || '';
+    const ticket      = parseFloat(data.ticketMedio) || 0;
+    const margem      = parseInt(data.margem) || 30;
+    const cac         = parseFloat(data.cacMaximo.replace('R$ ','')) || 0;
+    const roas        = parseFloat(data.roasMinimo) || 0;
+    const prazo       = data.prazo || '';
+    const urgente     = prazo.includes('Urgente');
+    const segmento    = data.segmento || '';
+    const isEcom      = segmento.includes('E-commerce');
+    const isInfo      = segmento.includes('Infoproduto');
+    const isLocal     = segmento.includes('Local');
+
+    // ---- SCORE ----
+    let score = 0;
+    if (hasPixel)   score += 20;
+    if (hasLP)      score += 15;
+    if (hasCAPI)    score += 10;
+    if (hasBM)      score += 10;
+    if (hasFBPage || hasIGBiz) score += 10;
+    if (!isNewbie)  score += 10;
+    if (ticket > 0) score += 5;
+    if (objetivos.length > 0) score += 5;
+    if (data.clienteIdeal !== '—') score += 5;
+    if (data.diferenciais !== '—') score += 5;
+    if (data.naoServe !== '—') score += 5;
+    score = Math.min(score, 100);
+
+    const scoreFill = document.getElementById('scoreFill');
+    const scoreNum  = document.getElementById('scoreNum');
+    let scoreClass  = score < 40 ? 'low' : score < 70 ? 'mid' : 'high';
+    let scoreLabel  = score < 40 ? 'Preparação Inicial — ajustes necessários antes de anunciar'
+                    : score < 70 ? 'Em desenvolvimento — pode começar com ajustes pontuais'
+                    : 'Pronto para anunciar — estrutura bem montada';
+    setTimeout(() => { scoreFill.style.width = score + '%'; }, 200);
+    scoreFill.className = 'score-fill ' + scoreClass;
+    scoreNum.textContent = score + '/100 — ' + scoreLabel;
+    document.getElementById('s-header-sub').textContent = `${data.nomeNegocio} | ${segmento} | ${data.abrangencia}`;
+
+    // ---- DIAGNÓSTICO EXECUTIVO ----
+    const pontosFortesArr = [];
+    const atencaoArr = [];
+    if (hasPixel) pontosFortesArr.push('Pixel instalado'); else atencaoArr.push('Pixel não instalado');
+    if (hasLP) pontosFortesArr.push('Landing page ativa'); else atencaoArr.push('Sem landing page');
+    if (hasCAPI) pontosFortesArr.push('API de Conversões ativa'); else atencaoArr.push('CAPI não configurada');
+    if (!isNewbie) pontosFortesArr.push('Histórico de campanhas'); else atencaoArr.push('Sem histórico de anúncios');
+    if (hasBM) pontosFortesArr.push('Business Manager configurado'); else atencaoArr.push('Business Manager pendente');
+    if (ticket > 100) pontosFortesArr.push('Ticket médio saudável'); else if (ticket > 0) atencaoArr.push('Ticket baixo — CAC precisa ser controlado');
+
+    const budgetNum = orcamento.includes('500 a R$ 1.5') ? 1000
+      : orcamento.includes('1.5') ? 3000
+      : orcamento.includes('5.000 a') ? 10000
+      : orcamento.includes('15.000') ? 20000
+      : orcamento.includes('500') ? 300 : 500;
+
+    document.getElementById('s-diagnostico').innerHTML = `
+      <div class="s-item green">
+        <div class="s-item-label">Pontos Fortes</div>
+        <div class="s-item-value">${pontosFortesArr.length ? pontosFortesArr.join(' · ') : 'Nenhum identificado ainda'}</div>
+      </div>
+      <div class="s-item red">
+        <div class="s-item-label">Pontos de Atenção</div>
+        <div class="s-item-value">${atencaoArr.length ? atencaoArr.join(' · ') : 'Nenhum crítico identificado'}</div>
+      </div>
+      <div class="s-item blue">
+        <div class="s-item-label">Estágio do Negócio</div>
+        <div class="s-item-value">${isNewbie ? 'Iniciante — primeiro ciclo' : 'Em crescimento — otimização e escala'}</div>
+      </div>
+      <div class="s-item yellow">
+        <div class="s-item-label">Prioridade Imediata</div>
+        <div class="s-item-value">${!hasPixel ? 'Instalar Pixel e API de Conversões' : !hasLP ? 'Criar landing page de destino' : urgente ? 'Campanha de resultado rápido (conversão direta)' : 'Estruturar funil completo'}</div>
+      </div>
+    `;
+
+    // ---- ESTRUTURA DE CAMPANHAS ----
+    const campArr = [];
+    if (hasVendas) {
+      if (!hasPixel || !hasLP) {
+        campArr.push({ nome: 'Campanha de Tráfego — Aquecimento', objetivo: 'Tráfego para o site', tipo: 'Topo de funil', obs: 'Use enquanto o Pixel não está instalado. Gera base para futuros públicos.' });
+      } else {
+        campArr.push({ nome: 'Campanha de Conversão — Vendas', objetivo: 'Evento de Compra (Purchase)', tipo: 'Fundo de funil', obs: 'Principal campanha. Otimizar para o evento mais próximo da compra.' });
+      }
+    }
+    if (hasLeads) {
+      campArr.push({ nome: 'Campanha de Geração de Leads', objetivo: 'Formulário Instantâneo ou conversão (Lead)', tipo: 'Topo/Meio de funil', obs: 'Use formulário nativo do Meta para reduzir atrito. Qualifique leads no CRM.' });
+    }
+    if (hasZap) {
+      campArr.push({ nome: 'Campanha de Mensagens — WhatsApp', objetivo: 'Mensagens para WhatsApp Business', tipo: 'Fundo de funil', obs: 'Exige WhatsApp Business verificado. Ideal para vendas consultivas e negócio local.' });
+    }
+    if (hasBranding) {
+      campArr.push({ nome: 'Campanha de Reconhecimento de Marca', objetivo: 'Alcance ou Reconhecimento da Marca', tipo: 'Topo de funil', obs: 'Alocar 10-20% do orçamento. Resultados aparecem no médio/longo prazo.' });
+    }
+    if (hasLanc) {
+      campArr.push({ nome: 'Sequência de Lançamento (3 fases)', objetivo: 'Alcance → Engajamento → Conversão', tipo: 'Full funnel sequenciado', obs: 'Fase 1: aquecimento (7-14 dias). Fase 2: CPL/lead. Fase 3: conversão no período de carrinho aberto.' });
+    }
+    if (campArr.length === 0) {
+      campArr.push({ nome: 'Campanha de Tráfego', objetivo: 'Tráfego para o site', tipo: 'Topo de funil', obs: 'Ponto de partida para coletar dados e construir audiências.' });
+    }
+
+    document.getElementById('s-campanhas').innerHTML = campArr.map((c,i) => `
+      <div class="s-item ${['blue','red','green','yellow','purple'][i%5]}" style="margin-bottom:10px;">
+        <div class="s-item-label">Campanha ${i+1} — ${c.tipo}</div>
+        <div class="s-item-value">${c.nome}</div>
+        <div class="s-item-sub">🎯 Objetivo Meta: <strong>${c.objetivo}</strong><br>💡 ${c.obs}</div>
+      </div>`).join('');
+
+    // ---- FUNIL ----
+    const funnelPctTOFU = hasBranding ? 40 : 35;
+    const funnelPctMOFU = 30;
+    const funnelPctBOFU = 100 - funnelPctTOFU - funnelPctMOFU;
+
+    let tofuDesc = 'Públicos frios: interesses (' + (data.interesses !== '—' ? data.interesses.split(',').slice(0,3).join(', ') : 'definir') + '), comportamentos, Lookalike 5-10%';
+    let mofuDesc = 'Públicos mornos: engajamento com página/perfil (últimos 90 dias), visualizações de vídeo (75%), Lookalike 1-3%';
+    let bofuDesc = 'Públicos quentes: visitantes do site, adicionaram ao carrinho, iniciaram checkout, lista de clientes — remarketing direto';
+    if (!hasLP) bofuDesc = 'Sem site ativo: use engajamento com perfil do Instagram/Facebook como base de remarketing';
+    if (isLocal) { tofuDesc = 'Raio geográfico em torno do estabelecimento + interesses relacionados ao serviço'; mofuDesc = 'Engajamento com perfil + salvamentos de localização'; }
+
+    document.getElementById('s-funil').innerHTML = `
+      <div class="funnel-row tofu">
+        <span class="funnel-badge">TOFU</span>
+        <div class="funnel-text">
+          <div class="funnel-title">Topo de Funil — Descoberta e Alcance</div>
+          <div class="funnel-desc">${tofuDesc}</div>
+        </div>
+        <div class="funnel-pct">${funnelPctTOFU}%</div>
+      </div>
+      <div class="funnel-row mofu">
+        <span class="funnel-badge">MOFU</span>
+        <div class="funnel-text">
+          <div class="funnel-title">Meio de Funil — Consideração e Nutrição</div>
+          <div class="funnel-desc">${mofuDesc}</div>
+        </div>
+        <div class="funnel-pct">${funnelPctMOFU}%</div>
+      </div>
+      <div class="funnel-row bofu">
+        <span class="funnel-badge">BOFU</span>
+        <div class="funnel-text">
+          <div class="funnel-title">Fundo de Funil — Conversão e Recuperação</div>
+          <div class="funnel-desc">${bofuDesc}</div>
+        </div>
+        <div class="funnel-pct">${funnelPctBOFU}%</div>
+      </div>`;
+
+    // ---- ORÇAMENTO ----
+    const orcBudget = budgetNum;
+    const orcTofu   = Math.round(orcBudget * funnelPctTOFU / 100);
+    const orcMofu   = Math.round(orcBudget * funnelPctMOFU / 100);
+    const orcBofu   = Math.round(orcBudget * funnelPctBOFU / 100);
+    const fmtBRL = v => 'R$ ' + v.toLocaleString('pt-BR');
+
+    const orcAllocations = [
+      { label: 'TOFU — Topo de Funil', pct: funnelPctTOFU, val: orcTofu, color: '#e94560' },
+      { label: 'MOFU — Meio de Funil', pct: funnelPctMOFU, val: orcMofu, color: '#f59e0b' },
+      { label: 'BOFU — Fundo de Funil', pct: funnelPctBOFU, val: orcBofu, color: '#10b981' },
+    ];
+
+    document.getElementById('s-orcamento-alloc').innerHTML = `
+      <div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;">
+        <div class="s-item blue" style="flex:1;min-width:140px;">
+          <div class="s-item-label">Orçamento Mensal Total</div>
+          <div class="s-item-value" style="font-size:20px;">${fmtBRL(orcBudget)}</div>
+          <div class="s-item-sub">${fmtBRL(Math.round(orcBudget/30))}/dia</div>
+        </div>
+        <div class="s-item green" style="flex:1;min-width:140px;">
+          <div class="s-item-label">Nº de Campanhas</div>
+          <div class="s-item-value" style="font-size:20px;">${campArr.length}</div>
+          <div class="s-item-sub">${fmtBRL(Math.round(orcBudget/campArr.length))}/campanha</div>
+        </div>
+      </div>
+      ${orcAllocations.map(a => `
+        <div class="budget-bar-row">
+          <div class="budget-bar-label">
+            <span>${a.label}</span>
+            <span>${a.pct}% — ${fmtBRL(a.val)}/mês</span>
+          </div>
+          <div class="budget-bar-bg">
+            <div class="budget-bar-fill" style="width:${a.pct}%;background:${a.color};"></div>
+          </div>
+        </div>`).join('')}
+      <div style="margin-top:14px;padding:12px 14px;background:#f8fafc;border-radius:10px;font-size:12px;color:#6c757d;line-height:1.6;">
+        💡 <strong>Recomendação:</strong> Comece com orçamento diário mínimo de ${fmtBRL(Math.round(orcBudget/30))} dividido entre as campanhas. Escale somente campanhas que atingirem o KPI de CAC/ROAS definido por pelo menos 3 dias consecutivos.
+      </div>`;
+
+    // ---- SEGMENTAÇÃO ----
+    const exclusoes = [];
+    if (data.idadeExcluir !== '—') exclusoes.push('Faixas etárias: ' + data.idadeExcluir);
+    if (data.generoExcluir !== 'Nenhum (mostrar para todos)') exclusoes.push(data.generoExcluir);
+    if (data.interessesExcluir !== '—') exclusoes.push('Interesses: ' + data.interessesExcluir);
+    if (data.regiaoExcluir !== '—') exclusoes.push('Regiões: ' + data.regiaoExcluir);
+
+    document.getElementById('s-segmentacao').innerHTML = `
+      <div class="s-grid" style="margin-bottom:16px;">
+        <div class="s-item blue">
+          <div class="s-item-label">Público Frio (Cold)</div>
+          <div class="s-item-value">Interesses + Comportamentos</div>
+          <div class="s-item-sub">Interesses-base: ${data.interesses !== '—' ? data.interesses : 'a definir'}<br>Faixa etária: ${data.idadePublico} | Gênero: ${data.genero}<br>Localização: ${data.abrangencia}</div>
+        </div>
+        <div class="s-item yellow">
+          <div class="s-item-label">Lookalike Audiences</div>
+          <div class="s-item-value">Semelhantes ao público existente</div>
+          <div class="s-item-sub">LAL 1% — Mais próximos dos melhores clientes<br>LAL 3% — Expansão com qualidade<br>LAL 5-10% — Escala de volume</div>
+        </div>
+        <div class="s-item green">
+          <div class="s-item-label">Remarketing (Hot)</div>
+          <div class="s-item-value">Quem já interagiu com a marca</div>
+          <div class="s-item-sub">${hasLP ? 'Visitantes do site (últimos 30/60/180 dias)' : 'Engajamento no Instagram/Facebook'}<br>Carrinho abandonado (se e-commerce)<br>Lista de clientes (upload de base)</div>
+        </div>
+        <div class="s-item red">
+          <div class="s-item-label">Exclusões Configuradas</div>
+          <div class="s-item-value">${exclusoes.length ? exclusoes.length + ' exclusão(ões)' : 'Nenhuma exclusão definida'}</div>
+          <div class="s-item-sub">${exclusoes.length ? exclusoes.join('<br>') : 'Defina exclusões para evitar desperdício de verba'}</div>
+        </div>
+      </div>
+      <div style="padding:12px 14px;background:#fef3f2;border-radius:10px;font-size:12px;color:#9a1c2e;line-height:1.6;">
+        🚫 <strong>Público que NÃO serve:</strong> ${data.naoServe !== '—' ? data.naoServe : 'Não especificado'}
+      </div>`;
+
+    // ---- CRIATIVOS ----
+    const criativos = [];
+
+    // Hook baseado na dor principal
+    const dor = data.doresCliente !== '—' ? data.doresCliente.split(/[.,\n]/)[0].trim() : 'o problema do seu cliente';
+    const diferencial = data.diferenciais !== '—' ? data.diferenciais.split(/[.,\n]/)[0].trim() : 'seu diferencial';
+
+    criativos.push({
+      tipo: 'CRIATIVO 1 — PROBLEMA/SOLUÇÃO (PAS)',
+      titulo: 'Formato: Vídeo curto (15-30s) ou Imagem estática',
+      desc: `Hook: "${dor}?" → Agite o problema → Apresente a solução (${diferencial}) → CTA direto. Funciona muito bem no topo de funil para audiências frias.`
+    });
+
+    if (hasVendas || hasLeads) {
+      criativos.push({
+        tipo: 'CRIATIVO 2 — PROVA SOCIAL',
+        titulo: 'Formato: Carrossel com depoimentos ou UGC (conteúdo de cliente)',
+        desc: 'Mostre resultados reais de clientes. Print de mensagens de aprovação, antes/depois, número de clientes atendidos. Funciona no meio e fundo de funil para quebrar objeções.'
+      });
+    }
+
+    criativos.push({
+      tipo: 'CRIATIVO 3 — OFERTA/URGÊNCIA',
+      titulo: 'Formato: Imagem direta ou vídeo de até 15s',
+      desc: data.ofertaEspecial === 'Sim'
+        ? `Destaque a oferta: "${data.descOferta}". Use contagem regressiva ou escassez real. Ideal para fundo de funil — pessoas que já conhecem a marca.`
+        : 'Crie uma oferta de entrada com bônus ou condição especial. Ex: "Compre hoje e ganhe X" ou "Vagas limitadas". Reduza o atrito para a primeira compra.'
+    });
+
+    if (isLocal) {
+      criativos.push({
+        tipo: 'CRIATIVO 4 — LOCAL/PROXIMIDADE',
+        titulo: 'Formato: Vídeo mostrando o espaço ou serviço ao vivo',
+        desc: 'Mostre o local físico, a equipe, o processo. Gera confiança e conexão. Use "Aqui em [cidade]" ou "Para quem está em [bairro]" para criar identificação geográfica.'
+      });
+    }
+
+    document.getElementById('s-criativos').innerHTML = criativos.map(c => `
+      <div class="criativo-card">
+        <div class="criativo-type">${c.tipo}</div>
+        <div class="criativo-title">${c.titulo}</div>
+        <div class="criativo-desc">${c.desc}</div>
+      </div>`).join('');
+
+    // ---- KPIs ----
+    const cpm    = isLocal ? 'R$ 8-18' : hasBranding ? 'R$ 5-14' : 'R$ 12-28';
+    const ctr    = isInfo ? '1,5-3%' : isEcom ? '1-2%' : '0,8-2%';
+    const cpcEst = isLocal ? 'R$ 0,80-2' : 'R$ 1,50-4';
+    const cacEst = ticket > 0 ? 'R$ ' + Math.round(ticket * (100 - margem) / 100 * 0.6).toLocaleString('pt-BR') : 'Definir após teste';
+    const roasEst = margem > 40 ? '3x-6x' : '2x-4x';
+    const freqRec = '2-3×/semana';
+    const cpaEst  = hasLeads ? 'R$ 5-25' : hasZap ? 'R$ 8-30' : '—';
+
+    document.getElementById('s-kpis').innerHTML = [
+      { val: cpm, label: 'CPM Estimado', ref: 'Custo por 1.000 impressões' },
+      { val: ctr, label: 'CTR Esperado', ref: 'Taxa de clique no anúncio' },
+      { val: cpcEst, label: 'CPC Estimado', ref: 'Custo por clique' },
+      { val: cacEst, label: 'CAC Projetado', ref: 'Custo por aquisição' },
+      { val: hasVendas ? roasEst : '—', label: 'ROAS Projetado', ref: 'Retorno sobre investimento' },
+      { val: freqRec, label: 'Frequência Ideal', ref: 'Exposições por pessoa/semana' },
+    ].map(k => `
+      <div class="kpi-box">
+        <div class="kpi-val">${k.val}</div>
+        <div class="kpi-label">${k.label}</div>
+        <div class="kpi-ref">${k.ref}</div>
+      </div>`).join('');
+
+    // ---- PLANO DE AÇÃO ----
+    const acoes = [];
+    if (!hasBM) acoes.push({ titulo: 'Criar Meta Business Manager', desc: 'Acesse business.facebook.com e configure sua conta comercial. É obrigatório para rodar anúncios profissionalmente.', prioridade: 'alta' });
+    if (!hasFBPage && !hasIGBiz) acoes.push({ titulo: 'Criar Página no Facebook / Perfil Business no Instagram', desc: 'Necessário para vincular ao BM e associar à conta de anúncios.', prioridade: 'alta' });
+    if (!hasPixel) acoes.push({ titulo: 'Instalar o Pixel do Meta', desc: 'Acesse o Gerenciador de Eventos → Pixel → Instalar no site. Configure os eventos: PageView, ViewContent, AddToCart, Purchase.', prioridade: 'alta' });
+    if (!hasCAPI) acoes.push({ titulo: 'Configurar API de Conversões (CAPI)', desc: 'Aumenta a qualidade dos eventos rastreados e contorna bloqueadores de cookies. Fundamental para campanhas de conversão.', prioridade: 'alta' });
+    if (!hasLP && hasVendas) acoes.push({ titulo: 'Criar Landing Page de Conversão', desc: 'Página focada em venda, com headline, benefícios, prova social e CTA claro. Sem LP, campanhas de conversão não performam.', prioridade: 'alta' });
+    acoes.push({ titulo: 'Definir criativos iniciais (mínimo 3 variações)', desc: 'Crie 1 vídeo curto de problema/solução, 1 imagem estática de oferta, e 1 carrossel de prova social. Teste os 3 simultaneamente.', prioridade: 'media' });
+    acoes.push({ titulo: 'Criar conta de anúncios e vincular ao BM', desc: 'Configure a conta de anúncios com o método de pagamento e vincule ao Business Manager e às páginas.', prioridade: 'media' });
+    acoes.push({ titulo: `Criar as ${campArr.length} campanha(s) recomendada(s)`, desc: campArr.map(c => c.nome).join(', ') + '. Inicie com orçamento conservador para coletar dados antes de escalar.', prioridade: 'media' });
+    acoes.push({ titulo: 'Configurar públicos e exclusões', desc: `Interesses: ${data.interesses !== '—' ? data.interesses : 'a definir'}. Exclusões: ${exclusoes.length ? exclusoes.join('; ') : 'a definir conforme restrições levantadas'}.`, prioridade: 'media' });
+    acoes.push({ titulo: 'Monitorar KPIs nos primeiros 7 dias', desc: `Acompanhe diariamente: CPM, CTR, CPC e CAC. Não pause ou altere campanhas antes de 48-72h de dados. Meta de CAC: ${data.cacMaximo}.`, prioridade: 'baixa' });
+    acoes.push({ titulo: 'Primeira rodada de otimização (após 7-14 dias)', desc: 'Pause criativos com CTR abaixo de 0,8%, duplique os que performam, crie Lookalike dos melhores públicos e ajuste orçamento para os conjuntos vencedores.', prioridade: 'baixa' });
+
+    document.getElementById('s-acoes').innerHTML = acoes.map((a,i) => `
+      <li class="action-item">
+        <div class="action-num ${a.prioridade === 'baixa' ? 'green' : a.prioridade === 'media' ? 'yellow' : ''}">${i+1}</div>
+        <div style="flex:1;">
+          <div class="action-title">${a.titulo}</div>
+          <div class="action-desc">${a.desc}</div>
+        </div>
+        <span class="action-priority ${a.prioridade === 'alta' ? 'p-alta' : a.prioridade === 'media' ? 'p-media' : 'p-baixa'}">${a.prioridade === 'alta' ? '🔴 Alta' : a.prioridade === 'media' ? '🟡 Média' : '🟢 Baixa'}</span>
+      </li>`).join('');
+
+    // ---- RISCOS ----
+    const riscos = [];
+    if (!hasPixel) riscos.push({ level:'high', icon:'🔴', titulo:'Pixel não instalado', desc:'Sem o Pixel, o Meta não consegue otimizar para conversões. Você pagará mais caro e terá resultados inferiores. Resolva antes de qualquer campanha de performance.' });
+    if (!hasLP && hasVendas) riscos.push({ level:'high', icon:'🔴', titulo:'Sem landing page para campanhas de venda', desc:'Direcionar tráfego para um perfil de rede social reduz drasticamente as conversões. A landing page é obrigatória para e-commerce e infoprodutos.' });
+    if (isNewbie) riscos.push({ level:'med', icon:'🟡', titulo:'Sem histórico de anúncios', desc:'A fase de aprendizado do algoritmo é mais longa e instável. Reserve pelo menos 7-14 dias antes de tirar conclusões sobre performance.' });
+    if (!hasCAPI) riscos.push({ level:'med', icon:'🟡', titulo:'CAPI não configurada', desc:'Sem a API de Conversões, até 30-40% dos eventos podem não ser rastreados (iOS 14+, ad blockers). Isso compromete a otimização do algoritmo.' });
+    if (orcamento.includes('500') && !orcamento.includes('1.5') && hasVendas) riscos.push({ level:'med', icon:'🟡', titulo:'Orçamento restrito para múltiplos objetivos', desc:`Com ${orcamento}, concentre em 1-2 campanhas no máximo. Dividir o orçamento entre muitas campanhas impede que o algoritmo saia da fase de aprendizado (mínimo: 50 eventos/semana por conjunto).` });
+    riscos.push({ level:'low', icon:'🟢', titulo:'Fadiga criativa', desc:'Criativos perdem performance em média após 2-4 semanas. Tenha sempre novos criativos em produção para substituição — nunca deixe somente 1 criativo ativo por conjunto.' });
+    riscos.push({ level:'low', icon:'🟢', titulo:'Sazonalidade e eventos de mercado', desc:'CPMs sobem significativamente em datas comemorativas, Black Friday e períodos eleitorais. Planeje o calendário editorial e ajuste orçamentos nesses períodos.' });
+
+    document.getElementById('s-riscos').innerHTML = riscos.map(r => `
+      <div class="risk-item ${r.level}">
+        <span class="risk-icon">${r.icon}</span>
+        <div>
+          <div class="risk-title">${r.titulo}</div>
+          <div class="risk-desc">${r.desc}</div>
+        </div>
+      </div>`).join('');
+
+    window._estrategiaData = { data, objetivos, hasVendas, hasLeads, hasZap, hasBranding, hasLanc,
+      hasPixel, hasLP, hasCAPI, isNewbie, orcamento, budgetNum, ticket, margem,
+      campArr, acoes, riscos, score, funnelPctTOFU, funnelPctMOFU, funnelPctBOFU, exclusoes, criativos };
+  }
+
+  // ============================================================
+  // EXPORTAR ESTRATÉGIA EM PDF
+  // ============================================================
+  function exportarEstrategiaPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+    const e = window._estrategiaData;
+    const d = e.data;
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('pt-BR');
+    const marginL = 18, pageW = 210, contentW = pageW - 36;
+    let y = 0;
+    const C = { primary:[26,26,46], accent:[233,69,96], gray:[108,117,125], white:[255,255,255],
+                border:[226,232,240], green:[16,185,129], yellow:[245,158,11], blue:[59,130,246] };
+
+    function addPage() { doc.addPage(); y = 20; }
+    function checkBreak(n=20) { if (y+n > 270) addPage(); }
+
+    function sectionHeader(emoji, title) {
+      checkBreak(22);
+      doc.setFillColor(26,26,46); doc.roundedRect(marginL, y, contentW, 14, 3, 3, 'F');
+      doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(...C.white);
+      doc.text(emoji + '  ' + title, marginL+6, y+9.5); y += 20;
+    }
+
+    function bodyRow(label, value, long=false) {
+      checkBreak(long ? 18 : 10);
+      doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(...C.gray);
+      doc.text(label, marginL, y);
+      doc.setFont('helvetica','bold'); doc.setTextColor(...C.primary);
+      const val = value && value !== '—' ? value : 'Não informado';
+      if (long) { const lines = doc.splitTextToSize(val, contentW-52); doc.text(lines, marginL+52, y); y += Math.max(lines.length*5, 7); }
+      else { doc.text(val.substring(0,80), marginL+52, y); y += 8; }
+      doc.setDrawColor(...C.border); doc.line(marginL, y-1, marginL+contentW, y-1);
+    }
+
+    function bullet(txt, color=C.primary) {
+      checkBreak(10);
+      doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(...color);
+      const lines = doc.splitTextToSize('•  ' + txt, contentW-8);
+      doc.text(lines, marginL+4, y); y += lines.length*5 + 3;
+    }
+
+    function numbered(num, title, desc, prioridade) {
+      checkBreak(18);
+      const pColor = prioridade==='alta' ? C.accent : prioridade==='media' ? C.yellow : C.green;
+      doc.setFillColor(...pColor); doc.circle(marginL+5, y+3, 3.5, 'F');
+      doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(...C.white);
+      doc.text(String(num), marginL+3.5, y+5);
+      doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.setTextColor(...C.primary);
+      doc.text(title, marginL+12, y+4.5);
+      const pLabel = prioridade==='alta' ? '● Alta' : prioridade==='media' ? '● Média' : '● Baixa';
+      doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(...pColor);
+      doc.text(pLabel, marginL+contentW, y+4.5, { align: 'right' });
+      y += 8;
+      doc.setFontSize(8.5); doc.setFont('helvetica','normal'); doc.setTextColor(...C.gray);
+      const lines = doc.splitTextToSize(desc, contentW-14);
+      doc.text(lines, marginL+12, y); y += lines.length*5 + 6;
+    }
+
+    // ===== CAPA =====
+    doc.setFillColor(...C.primary); doc.rect(0,0,210,297,'F');
+    doc.setFillColor(...C.accent); doc.rect(0,0,8,297,'F');
+    doc.setFontSize(9); doc.setTextColor(...C.accent); doc.setFont('helvetica','bold');
+    doc.text('AGENTE DE TRÁFEGO PAGO — FASE 2', 20, 40);
+    doc.setFontSize(30); doc.setTextColor(...C.white); doc.setFont('helvetica','bold');
+    doc.text('ESTRATÉGIA', 20, 60); doc.text('COMPLETA', 20, 76); doc.text('DE TRÁFEGO', 20, 92);
+    doc.setFontSize(11); doc.setTextColor(160,160,200); doc.setFont('helvetica','normal');
+    doc.text('Plano estratégico gerado automaticamente com base', 20, 110);
+    doc.text('no diagnóstico do cliente', 20, 117);
+    doc.setFillColor(40,40,70); doc.roundedRect(20,175,contentW,80,4,4,'F');
+    doc.setFontSize(8); doc.setTextColor(140,140,180);
+    doc.text('EMPRESA', 30,190); doc.text('SEGMENTO', 30,210); doc.text('SCORE', 30,230);
+    doc.text('DATA', 110,190); doc.text('RESPONSÁVEL', 110,210); doc.text('ORÇAMENTO', 110,230);
+    doc.setFontSize(12); doc.setTextColor(...C.white); doc.setFont('helvetica','bold');
+    doc.text((d.nomeNegocio||'').substring(0,30), 30,198);
+    doc.text((d.segmento||'').substring(0,28), 30,218);
+    doc.text(e.score + '/100', 30,238);
+    doc.text(dateStr, 110,198);
+    doc.text((d.nomeCliente||'').substring(0,24), 110,218);
+    doc.text(d.orcamento.substring(0,24), 110,238);
+    doc.setFontSize(7); doc.setTextColor(100,100,130); doc.setFont('helvetica','normal');
+    doc.text('Documento confidencial gerado pelo sistema de Diagnóstico de Tráfego Pago', 20, 288);
+
+    // ===== PÁGINA 2 =====
+    doc.addPage(); y = 20;
+    doc.setFontSize(18); doc.setFont('helvetica','bold'); doc.setTextColor(...C.primary);
+    doc.text('Plano Estratégico — ' + (d.nomeNegocio||''), marginL, y); y+=6;
+    doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(...C.gray);
+    doc.text(`Gerado em ${dateStr} | Score de prontidão: ${e.score}/100`, marginL, y); y+=12;
+    doc.setDrawColor(...C.accent); doc.setLineWidth(0.5); doc.line(marginL,y,marginL+contentW,y); doc.setLineWidth(0.2); y+=12;
+
+    sectionHeader('🔍','Diagnóstico Executivo');
+    bodyRow('Pontos Fortes', e.hasPixel&&e.hasLP ? 'Pixel + Landing Page ativos — base sólida' : !e.hasPixel ? 'Sem Pixel — prioridade máxima' : 'Landing Page ativa');
+    bodyRow('Estágio', e.isNewbie ? 'Iniciante — primeiro ciclo de anúncios' : 'Em crescimento — otimização e escala');
+    bodyRow('Score de Prontidão', e.score + '/100 pontos');
+    bodyRow('Prioridade Imediata', !e.hasPixel ? 'Instalar Pixel e API de Conversões' : !e.hasLP ? 'Criar landing page de destino' : 'Estruturar funil completo'); y+=8;
+
+    sectionHeader('📋','Estrutura de Campanhas Recomendada');
+    e.campArr.forEach((c,i) => {
+      checkBreak(16);
+      doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.setTextColor(...C.primary);
+      doc.text(`${i+1}. ${c.nome}`, marginL+2, y); y+=6;
+      doc.setFontSize(8.5); doc.setFont('helvetica','normal'); doc.setTextColor(...C.gray);
+      doc.text(`Objetivo Meta: ${c.objetivo}  |  Tipo: ${c.tipo}`, marginL+4, y); y+=5;
+      const obs = doc.splitTextToSize('→ ' + c.obs, contentW-6);
+      doc.text(obs, marginL+4, y); y += obs.length*4.5 + 6;
+    }); y+=4;
+
+    sectionHeader('🔽','Estratégia de Funil e Orçamento');
+    const fmtBRL2 = v => 'R$ ' + v.toLocaleString('pt-BR');
+    const bN = e.budgetNum;
+    [
+      ['TOFU — Topo de Funil', e.funnelPctTOFU, Math.round(bN*e.funnelPctTOFU/100), 'Públicos frios: interesses, comportamentos, Lookalike 5-10%'],
+      ['MOFU — Meio de Funil', e.funnelPctMOFU, Math.round(bN*e.funnelPctMOFU/100), 'Públicos mornos: engajamento, vídeo views 75%, Lookalike 1-3%'],
+      ['BOFU — Fundo de Funil', 100-e.funnelPctTOFU-e.funnelPctMOFU, Math.round(bN*(100-e.funnelPctTOFU-e.funnelPctMOFU)/100), 'Públicos quentes: visitantes do site, carrinho abandonado, lista de clientes'],
+    ].forEach(([label,pct,val,desc]) => {
+      checkBreak(14);
+      doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(...C.primary);
+      doc.text(`${label} — ${pct}% (${fmtBRL2(val)}/mês)`, marginL+2, y); y+=5;
+      doc.setFont('helvetica','normal'); doc.setTextColor(...C.gray);
+      doc.text(desc, marginL+4, y); y+=9;
+    }); y+=4;
+
+    sectionHeader('🎯','Segmentação');
+    bodyRow('Público frio', `Interesses: ${d.interesses !== '—' ? d.interesses : 'a definir'} | ${d.idadePublico} | ${d.genero}`, true);
+    bodyRow('Lookalike', 'LAL 1% (qualidade), LAL 3% (equilíbrio), LAL 5-10% (volume)');
+    bodyRow('Remarketing', e.hasLP ? 'Visitantes do site 30/60/180 dias + carrinho abandonado' : 'Engajamento com perfil do Instagram/Facebook (90 dias)');
+    if (e.exclusoes.length) bodyRow('Exclusões', e.exclusoes.join(' | '), true);
+    bodyRow('Não serve para', d.naoServe, true); y+=8;
+
+    sectionHeader('🎨','Direção de Criativos');
+    e.criativos.forEach(c => {
+      checkBreak(18);
+      doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(...C.accent);
+      doc.text(c.tipo, marginL+2, y); y+=5;
+      doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(...C.primary);
+      doc.text(c.titulo, marginL+2, y); y+=5;
+      doc.setFontSize(8.5); doc.setFont('helvetica','normal'); doc.setTextColor(...C.gray);
+      const lines = doc.splitTextToSize(c.desc, contentW-6);
+      doc.text(lines, marginL+2, y); y += lines.length*4.5 + 8;
+    }); y+=4;
+
+    sectionHeader('⚡','Plano de Ação — Próximos Passos');
+    e.acoes.forEach((a,i) => numbered(i+1, a.titulo, a.desc, a.prioridade)); y+=4;
+
+    sectionHeader('⚠️','Riscos e Pontos de Atenção');
+    e.riscos.forEach(r => {
+      checkBreak(16);
+      doc.setFontSize(10); doc.setFont('helvetica','bold');
+      doc.setTextColor(...(r.level==='high' ? C.accent : r.level==='med' ? C.yellow : C.green));
+      doc.text(r.icon + '  ' + r.titulo, marginL+2, y); y+=6;
+      doc.setFontSize(8.5); doc.setFont('helvetica','normal'); doc.setTextColor(...C.gray);
+      const lines = doc.splitTextToSize(r.desc, contentW-6);
+      doc.text(lines, marginL+4, y); y += lines.length*4.5 + 6;
+    });
+
+    // rodapé
+    const pc = doc.internal.getNumberOfPages();
+    for(let i=1;i<=pc;i++) {
+      doc.setPage(i);
+      if(i>1) { doc.setFontSize(7); doc.setTextColor(...C.gray); doc.text(`Estratégia de Tráfego — ${d.nomeNegocio} — ${dateStr}`, marginL, 291); doc.text(`Pág. ${i}/${pc}`, 192, 291, {align:'right'}); }
+    }
+
+    const fn = `estrategia-${(d.nomeNegocio||'cliente').toLowerCase().replace(/\s+/g,'-')}-${dateStr.replace(/\//g,'-')}.pdf`;
+    doc.save(fn);
+  }
+
+  function reiniciar() { location.reload(); }
+</script>
+</body>
+</html>
