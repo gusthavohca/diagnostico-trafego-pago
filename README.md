@@ -1,0 +1,1 @@
+# diagnostico-trafego-pago
